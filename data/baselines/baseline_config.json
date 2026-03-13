@@ -1,0 +1,28 @@
+{
+  "version": "1.0",
+  "generated_at": "2026-02-15T00:00:00Z",
+  "window_start": "2026-01-15T00:00:00Z",
+  "window_end": "2026-02-15T00:00:00Z",
+  "services": [
+    {
+      "service_name": "payment-service",
+      "endpoint": "/api/v1/payments",
+      "baselines": [
+        {"hour": 0, "dow": 0, "mean_count": 120, "std_count": 25, "mean_latency_ms": 45, "std_latency_ms": 12},
+        {"hour": 9, "dow": 1, "mean_count": 850, "std_count": 90, "mean_latency_ms": 52, "std_latency_ms": 15},
+        {"hour": 12, "dow": 1, "mean_count": 1200, "std_count": 110, "mean_latency_ms": 58, "std_latency_ms": 18},
+        {"hour": 17, "dow": 4, "mean_count": 950, "std_count": 85, "mean_latency_ms": 55, "std_latency_ms": 14}
+      ]
+    },
+    {
+      "service_name": "order-service",
+      "endpoint": "/api/v1/orders",
+      "baselines": [
+        {"hour": 0, "dow": 0, "mean_count": 80, "std_count": 18, "mean_latency_ms": 38, "std_latency_ms": 10},
+        {"hour": 10, "dow": 2, "mean_count": 620, "std_count": 70, "mean_latency_ms": 42, "std_latency_ms": 12},
+        {"hour": 14, "dow": 3, "mean_count": 780, "std_count": 80, "mean_latency_ms": 48, "std_latency_ms": 14},
+        {"hour": 20, "dow": 5, "mean_count": 350, "std_count": 55, "mean_latency_ms": 40, "std_latency_ms": 11}
+      ]
+    }
+  ]
+}

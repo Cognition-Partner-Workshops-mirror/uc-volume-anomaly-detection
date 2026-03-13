@@ -1,0 +1,50 @@
+# Anomaly detection configuration
+
+baseline:
+  window_days: 30
+  min_samples_per_bucket: 4
+  granularity: hourly
+
+detectors:
+  zscore:
+    enabled: true
+    warning_threshold: 2.0
+    critical_threshold: 3.0
+
+  seasonal:
+    enabled: true
+    deviation_threshold: 2.5
+
+  error_rate:
+    enabled: true
+    warning_threshold: 0.05
+    critical_threshold: 0.10
+
+alerting:
+  cooldown_minutes: 15
+  deduplication_window_minutes: 30
+  notification_channels:
+    - type: webhook
+      url: "${ALERT_WEBHOOK_URL}"
+      severity_filter: ["high", "critical"]
+    - type: pagerduty
+      routing_key: "${PAGERDUTY_ROUTING_KEY}"
+      severity_filter: ["critical"]
+
+services:
+  monitored:
+    - name: payment-service
+      endpoints:
+        - /api/v1/payments
+        - /api/v1/payments/status
+    - name: order-service
+      endpoints:
+        - /api/v1/orders
+        - /api/v1/orders/status
+    - name: auth-service
+      endpoints:
+        - /api/v1/auth/login
+        - /api/v1/auth/token
+    - name: notification-service
+      endpoints:
+        - /api/v1/notifications/send
