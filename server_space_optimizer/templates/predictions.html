@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block title %}Growth Predictions - Server Space Optimizer{% endblock %}
+{% block nav_predictions %}active{% endblock %}
+
+{% block content %}
+<!-- Prediction controls -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-sliders"></i> Prediction Filters
+            </div>
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <label for="pred-server-select" class="form-label">Server</label>
+                        <select class="form-select" id="pred-server-select" onchange="onPredServerChange()">
+                            <option value="">Select a server...</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="pred-subapp-select" class="form-label">Sub-Application</label>
+                        <select class="form-select" id="pred-subapp-select">
+                            <option value="">All Sub-Apps</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <button class="btn btn-primary w-100" onclick="loadPredictions()">
+                            <i class="bi bi-graph-up-arrow"></i> Generate Predictions
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Prediction cards (weekly, monthly, yearly) -->
+<div class="row mb-4" id="prediction-cards" style="display: none;">
+    <div class="col-md-4">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-calendar-week"></i> Weekly Prediction
+            </div>
+            <div class="card-body">
+                <div class="text-center">
+                    <h4 id="pred-weekly-growth" class="text-primary">--</h4>
+                    <p class="text-muted mb-1">Predicted Growth</p>
+                    <h5 id="pred-weekly-rate" class="text-secondary">--</h5>
+                    <p class="text-muted mb-1">Growth Rate</p>
+                    <h5 id="pred-weekly-total" class="text-dark">--</h5>
+                    <p class="text-muted mb-0">Predicted Total</p>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between small text-muted">
+                    <span>Confidence: <strong id="pred-weekly-conf">--</strong></span>
+                    <span>Data Points: <strong id="pred-weekly-dp">--</strong></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-success">
+            <div class="card-header bg-success text-white">
+                <i class="bi bi-calendar-month"></i> Monthly Prediction
+            </div>
+            <div class="card-body">
+                <div class="text-center">
+                    <h4 id="pred-monthly-growth" class="text-success">--</h4>
+                    <p class="text-muted mb-1">Predicted Growth</p>
+                    <h5 id="pred-monthly-rate" class="text-secondary">--</h5>
+                    <p class="text-muted mb-1">Growth Rate</p>
+                    <h5 id="pred-monthly-total" class="text-dark">--</h5>
+                    <p class="text-muted mb-0">Predicted Total</p>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between small text-muted">
+                    <span>Confidence: <strong id="pred-monthly-conf">--</strong></span>
+                    <span>Data Points: <strong id="pred-monthly-dp">--</strong></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-warning">
+            <div class="card-header bg-warning text-dark">
+                <i class="bi bi-calendar"></i> Yearly Prediction
+            </div>
+            <div class="card-body">
+                <div class="text-center">
+                    <h4 id="pred-yearly-growth" class="text-warning">--</h4>
+                    <p class="text-muted mb-1">Predicted Growth</p>
+                    <h5 id="pred-yearly-rate" class="text-secondary">--</h5>
+                    <p class="text-muted mb-1">Growth Rate</p>
+                    <h5 id="pred-yearly-total" class="text-dark">--</h5>
+                    <p class="text-muted mb-0">Predicted Total</p>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between small text-muted">
+                    <span>Confidence: <strong id="pred-yearly-conf">--</strong></span>
+                    <span>Data Points: <strong id="pred-yearly-dp">--</strong></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Historical trend chart -->
+<div class="row mb-4" id="trend-chart-container" style="display: none;">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-graph-up"></i> Historical Space Usage Trend
+            </div>
+            <div class="card-body">
+                <canvas id="trend-chart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Prediction table for all sub-apps -->
+<div class="row" id="prediction-table-container" style="display: none;">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-table"></i> Growth Predictions by Sub-Application
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Sub-App</th>
+                                <th>Current Size</th>
+                                <th>Weekly Growth</th>
+                                <th>Monthly Growth</th>
+                                <th>Yearly Growth</th>
+                                <th>Weekly Rate %</th>
+                                <th>Monthly Rate %</th>
+                                <th>Yearly Rate %</th>
+                                <th>Confidence</th>
+                            </tr>
+                        </thead>
+                        <tbody id="prediction-table-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Populate server dropdown on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        populateServerDropdowns();
+    });
+</script>
+{% endblock %}

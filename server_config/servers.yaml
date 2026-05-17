@@ -1,0 +1,84 @@
+# =============================================================
+# Server Space Optimizer - Server Configuration
+# =============================================================
+# Configure your Linux servers and their NAS mount points here.
+# Each server can have multiple sub-applications identified by:
+#   1. Relative subfolder paths under the NAS mount
+#   2. Dedicated absolute mount paths (set is_dedicated_mount: true)
+#   3. Glob patterns matching subfolders in a shared NAS
+# =============================================================
+
+# Scan interval in minutes (default: 60)
+scan_interval_minutes: 60
+
+# Purge eligibility thresholds in days
+# Files older than these thresholds are flagged for potential cleanup
+purge_thresholds_days:
+  - 90
+  - 180
+  - 365
+
+# SQLite database path for storing scan history and predictions
+database_path: "space_optimizer.db"
+
+# Web UI settings
+host: "0.0.0.0"
+port: 8080
+
+# =============================================================
+# Server Definitions
+# =============================================================
+servers:
+  # --- Example: Server with sub-apps as relative subfolders ---
+  - server_name: "prod-server-01"
+    server_host: "10.0.1.100"
+    nas_mount_path: "/mnt/nas/production"
+    sub_apps:
+      # Sub-app with a relative path under the NAS mount
+      - name: "billing-service"
+        path: "billing"
+
+      # Sub-app with a relative path under the NAS mount
+      - name: "payment-gateway"
+        path: "payments"
+
+      # Sub-app using glob patterns to match multiple directories
+      # in the shared NAS (e.g., log directories with date prefixes)
+      - name: "application-logs"
+        patterns:
+          - "logs_*"
+          - "audit_logs"
+
+  # --- Example: Server with dedicated mounts and shared NAS ---
+  - server_name: "prod-server-02"
+    server_host: "10.0.1.101"
+    nas_mount_path: "/mnt/shared_nas"
+    sub_apps:
+      # Sub-app with its own dedicated NAS mount (absolute path)
+      - name: "data-warehouse"
+        path: "/mnt/nas_warehouse/data"
+        is_dedicated_mount: true
+
+      # Sub-app as a subfolder in the shared NAS
+      - name: "reporting-service"
+        path: "reports"
+
+      # Sub-app matching pattern-based directories in shared NAS
+      - name: "batch-processing"
+        patterns:
+          - "batch_*"
+          - "etl_output_*"
+
+  # --- Example: Server with only pattern-based sub-apps ---
+  - server_name: "staging-server-01"
+    server_host: "10.0.2.50"
+    nas_mount_path: "/mnt/staging_nas"
+    sub_apps:
+      - name: "staging-apps"
+        patterns:
+          - "app_*"
+
+      - name: "staging-data"
+        patterns:
+          - "data_*"
+          - "backup_*"

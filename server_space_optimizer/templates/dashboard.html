@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Server Space Optimizer{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+
+{% block content %}
+<!-- Summary cards row -->
+<div class="row mb-4" id="summary-cards">
+    <div class="col-md-3">
+        <div class="card summary-card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-subtitle mb-1">Total Servers</h6>
+                        <h2 class="card-title mb-0" id="total-servers">0</h2>
+                    </div>
+                    <i class="bi bi-hdd-network display-4 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card summary-card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-subtitle mb-1">Total Sub-Apps</h6>
+                        <h2 class="card-title mb-0" id="total-sub-apps">0</h2>
+                    </div>
+                    <i class="bi bi-grid-3x3-gap display-4 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card summary-card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-subtitle mb-1">Total Space Used</h6>
+                        <h2 class="card-title mb-0" id="total-space">0 B</h2>
+                    </div>
+                    <i class="bi bi-pie-chart display-4 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card summary-card bg-warning text-dark">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-subtitle mb-1">Total Files</h6>
+                        <h2 class="card-title mb-0" id="total-files">0</h2>
+                    </div>
+                    <i class="bi bi-file-earmark display-4 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Last scan info -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="alert alert-light d-flex justify-content-between align-items-center mb-0">
+            <span>
+                <i class="bi bi-info-circle"></i>
+                Last Scan: <strong id="last-scan-time">Never</strong>
+                | Scan Interval: <strong id="scan-interval">60 min</strong>
+            </span>
+            <button class="btn btn-sm btn-primary" onclick="refreshDashboard()">
+                <i class="bi bi-arrow-repeat"></i> Refresh Data
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Server cards with sub-app breakdown -->
+<div class="row" id="server-cards">
+    <!-- Dynamically populated by JavaScript -->
+    <div class="col-12 text-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-2 text-muted">Loading server data...</p>
+    </div>
+</div>
+
+<!-- Space distribution chart -->
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-pie-chart"></i> Space Distribution by Server
+            </div>
+            <div class="card-body">
+                <canvas id="server-pie-chart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-bar-chart"></i> Sub-App Space Breakdown
+            </div>
+            <div class="card-body">
+                <canvas id="subapp-bar-chart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Load dashboard data on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        refreshDashboard();
+        // Auto-refresh every 2 minutes to show latest scan data
+        setInterval(refreshDashboard, 120000);
+    });
+</script>
+{% endblock %}
