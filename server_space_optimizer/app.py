@@ -105,19 +105,19 @@ app.include_router(api_router)
 @app.get("/", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
     """Serve the main dashboard HTML page."""
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+    return templates.TemplateResponse(name="dashboard.html", request=request)
 
 
 @app.get("/purge", response_class=HTMLResponse)
 async def purge_page(request: Request):
     """Serve the purge eligibility report page."""
-    return templates.TemplateResponse("purge.html", {"request": request})
+    return templates.TemplateResponse(name="purge.html", request=request)
 
 
 @app.get("/predictions", response_class=HTMLResponse)
 async def predictions_page(request: Request):
     """Serve the volume growth predictions page."""
-    return templates.TemplateResponse("predictions.html", {"request": request})
+    return templates.TemplateResponse(name="predictions.html", request=request)
 
 
 @app.get("/health")

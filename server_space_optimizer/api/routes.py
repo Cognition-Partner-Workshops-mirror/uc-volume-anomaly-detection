@@ -9,7 +9,7 @@ All endpoints return JSON for consumption by the frontend dashboard.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -285,10 +285,15 @@ def get_scan_status():
 
 
 @router.post("/scan/trigger")
-def trigger_scan(force_full: bool = Query(False)):
+def trigger_scan(
+    force_full: bool = Query(False),
+    background_tasks: BackgroundTasks = None,
+):
     """
     Manually trigger a scan outside the normal schedule.
 
+    Runs the scan in a background task so the HTTP response returns
+    immediately, allowing the frontend to poll for status updates.
     Set force_full=true to perform a complete rescan instead of
     incremental mode.
     """
@@ -298,7 +303,8 @@ def trigger_scan(force_full: bool = Query(False)):
     if _scan_scheduler.is_scanning:
         return {"status": "busy", "message": "A scan is already in progress"}
 
-    _scan_scheduler.trigger_scan_now(force_full=force_full)
+    # Run scan in background so the response returns immediately
+    background_tasks.add_task(_scan_scheduler.trigger_scan_now, force_full=force_full)
     return {
         "status": "started",
         "scan_type": "full" if force_full else "incremental",

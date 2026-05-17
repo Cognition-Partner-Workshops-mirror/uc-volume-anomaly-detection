@@ -17,7 +17,7 @@ let trendChart = null;
 let cachedDashboardData = null;
 
 // ===========================================================
-// Utility: fetch JSON from API with error handling
+// Utility: fetch JSON from API with error handling (GET)
 // ===========================================================
 async function apiFetch(url) {
     try {
@@ -28,6 +28,22 @@ async function apiFetch(url) {
         return await response.json();
     } catch (error) {
         console.error('API fetch failed:', error);
+        return null;
+    }
+}
+
+// ===========================================================
+// Utility: POST request to API with error handling
+// ===========================================================
+async function apiPost(url) {
+    try {
+        const response = await fetch(url, { method: 'POST' });
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status} ${response.statusText}`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('API POST failed:', error);
         return null;
     }
 }
@@ -79,8 +95,9 @@ async function triggerScan(forceFull = false) {
         btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Starting...';
     }
 
+    // Use POST method to match the backend endpoint
     const url = `/api/scan/trigger?force_full=${forceFull}`;
-    const result = await apiFetch(url);
+    const result = await apiPost(url);
 
     if (result && result.status === 'started') {
         // Poll for status updates while scanning

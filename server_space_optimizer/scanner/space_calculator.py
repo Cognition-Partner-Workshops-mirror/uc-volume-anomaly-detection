@@ -6,9 +6,10 @@ collecting file sizes, modification times, and access times.
 Designed for large filesystems (~10TB) with efficient memory usage.
 """
 
+import calendar
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Generator
@@ -38,11 +39,12 @@ class DirectoryScanResult:
 
 
 def _timestamp_to_datetime(ts: float) -> datetime:
-    """Convert a Unix timestamp to a datetime object safely."""
+    """Convert a Unix timestamp to a UTC datetime object safely."""
     try:
-        return datetime.fromtimestamp(ts)
+        # Use utcfromtimestamp to keep all timestamps in UTC consistently
+        return datetime.utcfromtimestamp(ts)
     except (OSError, ValueError):
-        return datetime.fromtimestamp(0)
+        return datetime.utcfromtimestamp(0)
 
 
 def scan_directory_recursive(
@@ -142,7 +144,8 @@ def scan_files_since(
     Yields:
         FileInfo for each file modified since the given timestamp
     """
-    since_ts = since_timestamp.timestamp()
+    # Use calendar.timegm to correctly interpret naive UTC datetime as UTC
+    since_ts = calendar.timegm(since_timestamp.timetuple())
     dir_stack = [root_path]
 
     while dir_stack:
