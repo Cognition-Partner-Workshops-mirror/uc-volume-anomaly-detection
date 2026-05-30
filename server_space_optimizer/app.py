@@ -177,9 +177,9 @@ async def login_submit(
 
     db = get_session(_session_factory)
     user = authenticate_user(db, username, password)
-    db.close()
 
     if not user:
+        db.close()
         return templates.TemplateResponse(
             name="login.html",
             request=request,
@@ -189,8 +189,10 @@ async def login_submit(
             },
         )
 
-    # Set session cookie and redirect to dashboard
+    # Build session token before closing DB to avoid detached instance error
     token = _make_session_token(user)
+    db.close()
+
     response = RedirectResponse("/", status_code=303)
     response.set_cookie(
         key="session_token", value=token, httponly=True, max_age=86400
@@ -227,9 +229,9 @@ async def signup_submit(
     # Use provided password or default 'welcome123'
     pw = password if password else "welcome123"
     user = create_user(db, username, email, password=pw)
-    db.close()
 
     if not user:
+        db.close()
         return templates.TemplateResponse(
             name="signup.html",
             request=request,
@@ -240,6 +242,7 @@ async def signup_submit(
             },
         )
 
+    db.close()
     return RedirectResponse(
         "/login?error=Account+created+successfully.+Please+login.",
         status_code=303,
