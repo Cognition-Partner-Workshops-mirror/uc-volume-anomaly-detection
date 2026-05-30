@@ -9,9 +9,8 @@ Designed for large filesystems (~10TB) with efficient memory usage.
 import calendar
 import os
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Generator
 
 logger = logging.getLogger(__name__)

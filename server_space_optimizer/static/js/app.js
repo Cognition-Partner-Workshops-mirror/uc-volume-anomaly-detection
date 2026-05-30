@@ -4,6 +4,7 @@
  * Handles API calls, dashboard rendering, chart creation,
  * purge report display, and growth prediction visualization.
  * Uses Chart.js (open-source) for all chart rendering.
+ * Supports forecasting: 1 week, 1 month, 1 year, and 5 years.
  */
 
 // ===========================================================
@@ -86,7 +87,7 @@ async function updateScanStatus() {
 }
 
 // ===========================================================
-// Trigger a manual scan via the API
+// Trigger a manual scan via the API (POST method)
 // ===========================================================
 async function triggerScan(forceFull = false) {
     const btn = document.getElementById('btn-trigger-scan');
@@ -227,7 +228,7 @@ function renderServerCards(servers) {
 }
 
 // ===========================================================
-// Chart: Server space distribution pie chart
+// Chart: Server space distribution pie chart (gradient palette)
 // ===========================================================
 function renderServerPieChart(servers) {
     const canvas = document.getElementById('server-pie-chart');
@@ -241,10 +242,10 @@ function renderServerPieChart(servers) {
     const labels = servers.map(s => s.server_name);
     const sizes = servers.map(s => s.total_size_bytes);
 
-    // Color palette for the pie chart segments
+    // Modern gradient-inspired color palette
     const colors = [
-        '#3498db', '#2ecc71', '#e74c3c', '#f39c12', '#9b59b6',
-        '#1abc9c', '#e67e22', '#34495e', '#16a085', '#c0392b',
+        '#667eea', '#38ef7d', '#e74c3c', '#f2994a', '#9b59b6',
+        '#2193b0', '#f2c94c', '#11998e', '#764ba2', '#c0392b',
     ];
 
     serverPieChart = new Chart(canvas, {
@@ -254,20 +255,30 @@ function renderServerPieChart(servers) {
             datasets: [{
                 data: sizes,
                 backgroundColor: colors.slice(0, labels.length),
-                borderWidth: 2,
+                borderWidth: 3,
                 borderColor: '#fff',
+                hoverOffset: 8,
             }],
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            cutout: '55%',
             plugins: {
-                legend: { position: 'right' },
+                legend: {
+                    position: 'right',
+                    labels: { font: { weight: '600' }, padding: 15 },
+                },
                 tooltip: {
+                    backgroundColor: 'rgba(26, 26, 46, 0.9)',
+                    titleFont: { weight: '700' },
+                    bodyFont: { weight: '500' },
+                    cornerRadius: 8,
+                    padding: 12,
                     callbacks: {
                         label: function(context) {
                             const server = servers[context.dataIndex];
-                            return `${server.server_name}: ${server.total_size_human}`;
+                            return ` ${server.server_name}: ${server.total_size_human}`;
                         },
                     },
                 },
@@ -292,8 +303,8 @@ function renderSubAppBarChart(servers) {
     const sizes = [];
     const bgColors = [];
     const colors = [
-        '#3498db', '#2ecc71', '#e74c3c', '#f39c12', '#9b59b6',
-        '#1abc9c', '#e67e22', '#34495e', '#16a085', '#c0392b',
+        '#667eea', '#38ef7d', '#e74c3c', '#f2994a', '#9b59b6',
+        '#2193b0', '#f2c94c', '#11998e', '#764ba2', '#c0392b',
     ];
 
     let colorIdx = 0;
@@ -314,7 +325,8 @@ function renderSubAppBarChart(servers) {
                 label: 'Space Used (bytes)',
                 data: sizes,
                 backgroundColor: bgColors,
-                borderRadius: 4,
+                borderRadius: 6,
+                borderSkipped: false,
             }],
         },
         options: {
@@ -324,20 +336,28 @@ function renderSubAppBarChart(servers) {
             plugins: {
                 legend: { display: false },
                 tooltip: {
+                    backgroundColor: 'rgba(26, 26, 46, 0.9)',
+                    cornerRadius: 8,
+                    padding: 12,
                     callbacks: {
                         label: function(context) {
-                            return formatSizeFromBytes(context.raw);
+                            return ` ${formatSizeFromBytes(context.raw)}`;
                         },
                     },
                 },
             },
             scales: {
                 x: {
+                    grid: { color: 'rgba(0,0,0,0.04)' },
                     ticks: {
                         callback: function(value) {
                             return formatSizeFromBytes(value);
                         },
                     },
+                },
+                y: {
+                    grid: { display: false },
+                    ticks: { font: { weight: '600' } },
                 },
             },
         },
@@ -510,7 +530,7 @@ async function onPredServerChange() {
 }
 
 // ===========================================================
-// Predictions page: load and render growth predictions
+// Predictions page: load growth predictions and purge rate
 // ===========================================================
 async function loadPredictions() {
     const serverSelect = document.getElementById('pred-server-select');
@@ -520,25 +540,35 @@ async function loadPredictions() {
     const server = serverSelect.value;
     const subApp = subappSelect ? subappSelect.value : '';
 
-    let url = `/api/servers/${encodeURIComponent(server)}/predictions`;
+    let predUrl = `/api/servers/${encodeURIComponent(server)}/predictions`;
+    let purgeRateUrl = `/api/servers/${encodeURIComponent(server)}/purge-rate`;
     if (subApp) {
-        url += `?sub_app_name=${encodeURIComponent(subApp)}`;
+        predUrl += `?sub_app_name=${encodeURIComponent(subApp)}`;
+        purgeRateUrl += `?sub_app_name=${encodeURIComponent(subApp)}`;
     }
 
-    const data = await apiFetch(url);
-    if (!data) return;
+    // Fetch growth predictions and purge rate in parallel
+    const [predData, purgeRateData] = await Promise.all([
+        apiFetch(predUrl),
+        apiFetch(purgeRateUrl),
+    ]);
 
-    if (subApp && data.predictions) {
+    if (subApp && predData && predData.predictions) {
         // Single sub-app prediction view
-        renderSinglePrediction(data);
-    } else if (data.predictions) {
+        renderSinglePrediction(predData);
+    } else if (predData && predData.predictions) {
         // All sub-apps prediction table
-        renderAllPredictions(data);
+        renderAllPredictions(predData);
+    }
+
+    // Render the purge rate / net forecast section
+    if (purgeRateData) {
+        renderPurgeRateForecast(purgeRateData);
     }
 }
 
 // ===========================================================
-// Render prediction cards for a single sub-app
+// Render prediction cards for a single sub-app (4 periods)
 // ===========================================================
 function renderSinglePrediction(data) {
     const cards = document.getElementById('prediction-cards');
@@ -552,6 +582,7 @@ function renderSinglePrediction(data) {
         weekly: 'weekly',
         monthly: 'monthly',
         yearly: 'yearly',
+        five_year: 'five-year',
     };
 
     for (const pred of data.predictions) {
@@ -565,9 +596,36 @@ function renderSinglePrediction(data) {
         updateElement(`pred-${key}-dp`, pred.data_points_used);
     }
 
-    // Render historical trend chart if data available
+    // Render historical trend chart with projection if data available
     if (data.historical_data && data.historical_data.length > 0) {
         renderTrendChart(data.historical_data, data.predictions);
+    }
+}
+
+// ===========================================================
+// Render purge rate and net space forecast section
+// ===========================================================
+function renderPurgeRateForecast(data) {
+    const section = document.getElementById('purge-forecast-section');
+    if (section) section.style.display = 'block';
+
+    // Display purge rates
+    updateElement('purge-rate-daily', data.daily_purge_rate_human + '/day');
+    updateElement('purge-rate-monthly', data.monthly_purge_rate_human + '/month');
+
+    // Display net forecasts for each period
+    const netForecasts = data.net_forecasts || {};
+    if (netForecasts.weekly) {
+        updateElement('net-forecast-week', netForecasts.weekly.net_total_human);
+    }
+    if (netForecasts.monthly) {
+        updateElement('net-forecast-month', netForecasts.monthly.net_total_human);
+    }
+    if (netForecasts.yearly) {
+        updateElement('net-forecast-year', netForecasts.yearly.net_total_human);
+    }
+    if (netForecasts.five_year) {
+        updateElement('net-forecast-5year', netForecasts.five_year.net_total_human);
     }
 }
 
@@ -587,6 +645,7 @@ function renderAllPredictions(data) {
         const weekly = report.predictions.find(p => p.period === 'weekly') || {};
         const monthly = report.predictions.find(p => p.period === 'monthly') || {};
         const yearly = report.predictions.find(p => p.period === 'yearly') || {};
+        const fiveYear = report.predictions.find(p => p.period === 'five_year') || {};
 
         html += `
             <tr>
@@ -595,6 +654,7 @@ function renderAllPredictions(data) {
                 <td>${weekly.predicted_growth_human || '--'}</td>
                 <td>${monthly.predicted_growth_human || '--'}</td>
                 <td>${yearly.predicted_growth_human || '--'}</td>
+                <td>${fiveYear.predicted_growth_human || '--'}</td>
                 <td>${weekly.growth_rate_percent || 0}%</td>
                 <td>${monthly.growth_rate_percent || 0}%</td>
                 <td>${yearly.growth_rate_percent || 0}%</td>
@@ -602,11 +662,11 @@ function renderAllPredictions(data) {
             </tr>`;
     }
 
-    tbody.innerHTML = html || '<tr><td colspan="9" class="text-center text-muted">No prediction data available</td></tr>';
+    tbody.innerHTML = html || '<tr><td colspan="10" class="text-center text-muted">No prediction data available</td></tr>';
 }
 
 // ===========================================================
-// Chart: Historical space usage trend with prediction overlay
+// Chart: Historical space trend with multi-period projections
 // ===========================================================
 function renderTrendChart(historicalData, predictions) {
     const canvas = document.getElementById('trend-chart');
@@ -623,17 +683,17 @@ function renderTrendChart(historicalData, predictions) {
     });
     const sizes = historicalData.map(d => d.size_bytes);
 
-    // Build prediction extension line (from last point forward)
+    // Build projection lines for multiple periods
     const lastSize = sizes[sizes.length - 1] || 0;
-    const yearlyPred = predictions.find(p => p.period === 'yearly');
     const monthlyPred = predictions.find(p => p.period === 'monthly');
+    const yearlyPred = predictions.find(p => p.period === 'yearly');
 
-    // Add projected points for the next 3 months
+    // Add projected points for the next 12 months
     const projectedLabels = [];
     const projectedSizes = [];
     if (monthlyPred && monthlyPred.predicted_growth_bytes > 0) {
         const monthlyGrowth = monthlyPred.predicted_growth_bytes;
-        for (let i = 1; i <= 3; i++) {
+        for (let i = 1; i <= 12; i++) {
             const futureDate = new Date();
             futureDate.setMonth(futureDate.getMonth() + i);
             projectedLabels.push(futureDate.toLocaleDateString());
@@ -659,21 +719,25 @@ function renderTrendChart(historicalData, predictions) {
                 {
                     label: 'Historical Usage',
                     data: historicalSeries,
-                    borderColor: '#3498db',
-                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102, 126, 234, 0.08)',
                     fill: true,
-                    tension: 0.3,
-                    pointRadius: 3,
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#667eea',
+                    borderWidth: 2.5,
                 },
                 {
                     label: 'Projected Growth',
                     data: projectedSeries,
                     borderColor: '#e74c3c',
-                    borderDash: [5, 5],
-                    backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                    borderDash: [6, 4],
+                    backgroundColor: 'rgba(231, 76, 60, 0.06)',
                     fill: true,
-                    tension: 0.3,
-                    pointRadius: 3,
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#e74c3c',
+                    borderWidth: 2.5,
                 },
             ],
         },
@@ -681,17 +745,27 @@ function renderTrendChart(historicalData, predictions) {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
+                legend: {
+                    labels: { font: { weight: '600' }, padding: 20 },
+                },
                 tooltip: {
+                    backgroundColor: 'rgba(26, 26, 46, 0.9)',
+                    cornerRadius: 8,
+                    padding: 12,
                     callbacks: {
                         label: function(context) {
                             if (context.raw === null) return '';
-                            return `${context.dataset.label}: ${formatSizeFromBytes(context.raw)}`;
+                            return ` ${context.dataset.label}: ${formatSizeFromBytes(context.raw)}`;
                         },
                     },
                 },
             },
             scales: {
+                x: {
+                    grid: { color: 'rgba(0,0,0,0.04)' },
+                },
                 y: {
+                    grid: { color: 'rgba(0,0,0,0.04)' },
                     ticks: {
                         callback: function(value) {
                             return formatSizeFromBytes(value);

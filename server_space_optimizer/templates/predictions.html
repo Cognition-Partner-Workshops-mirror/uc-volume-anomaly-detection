@@ -1,15 +1,21 @@
 {% extends "base.html" %}
 
-{% block title %}Growth Predictions - Server Space Optimizer{% endblock %}
+{% block title %}Growth & Forecast - Server Space Optimizer{% endblock %}
 {% block nav_predictions %}active{% endblock %}
 
 {% block content %}
+<!-- Page header -->
+<div class="page-header">
+    <h3><i class="bi bi-graph-up-arrow" style="color: #667eea;"></i> Growth Predictions & Space Forecast</h3>
+    <p>Analyze volume growth, purge rates, and forecast space consumption over 1 week, 1 month, 1 year, and 5 years</p>
+</div>
+
 <!-- Prediction controls -->
 <div class="row mb-4">
     <div class="col-12">
         <div class="card">
             <div class="card-header">
-                <i class="bi bi-sliders"></i> Prediction Filters
+                <i class="bi bi-sliders"></i> Forecast Filters
             </div>
             <div class="card-body">
                 <div class="row g-3 align-items-end">
@@ -27,7 +33,7 @@
                     </div>
                     <div class="col-md-4">
                         <button class="btn btn-primary w-100" onclick="loadPredictions()">
-                            <i class="bi bi-graph-up-arrow"></i> Generate Predictions
+                            <i class="bi bi-graph-up-arrow"></i> Generate Forecast
                         </button>
                     </div>
                 </div>
@@ -36,70 +42,133 @@
     </div>
 </div>
 
-<!-- Prediction cards (weekly, monthly, yearly) -->
+<!-- Forecast cards: 1 week, 1 month, 1 year, 5 years -->
 <div class="row mb-4" id="prediction-cards" style="display: none;">
-    <div class="col-md-4">
-        <div class="card border-primary">
-            <div class="card-header bg-primary text-white">
-                <i class="bi bi-calendar-week"></i> Weekly Prediction
+    <!-- Weekly forecast -->
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card forecast-card">
+            <div class="card-header text-white" style="background: linear-gradient(135deg, #667eea, #764ba2);">
+                <i class="bi bi-calendar-week"></i> 1 Week Forecast
             </div>
-            <div class="card-body">
-                <div class="text-center">
-                    <h4 id="pred-weekly-growth" class="text-primary">--</h4>
-                    <p class="text-muted mb-1">Predicted Growth</p>
-                    <h5 id="pred-weekly-rate" class="text-secondary">--</h5>
-                    <p class="text-muted mb-1">Growth Rate</p>
-                    <h5 id="pred-weekly-total" class="text-dark">--</h5>
-                    <p class="text-muted mb-0">Predicted Total</p>
+            <div class="card-body text-center">
+                <div class="forecast-value text-primary" id="pred-weekly-growth">--</div>
+                <div class="forecast-label text-muted">Predicted Growth</div>
+                <hr class="my-2">
+                <h5 id="pred-weekly-total" class="mb-0">--</h5>
+                <small class="text-muted">Predicted Total</small>
+                <div class="mt-2">
+                    <span class="badge" style="background: var(--gradient-primary);" id="pred-weekly-rate">--%</span>
                 </div>
-                <hr>
-                <div class="d-flex justify-content-between small text-muted">
-                    <span>Confidence: <strong id="pred-weekly-conf">--</strong></span>
-                    <span>Data Points: <strong id="pred-weekly-dp">--</strong></span>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card border-success">
-            <div class="card-header bg-success text-white">
-                <i class="bi bi-calendar-month"></i> Monthly Prediction
-            </div>
-            <div class="card-body">
-                <div class="text-center">
-                    <h4 id="pred-monthly-growth" class="text-success">--</h4>
-                    <p class="text-muted mb-1">Predicted Growth</p>
-                    <h5 id="pred-monthly-rate" class="text-secondary">--</h5>
-                    <p class="text-muted mb-1">Growth Rate</p>
-                    <h5 id="pred-monthly-total" class="text-dark">--</h5>
-                    <p class="text-muted mb-0">Predicted Total</p>
-                </div>
-                <hr>
-                <div class="d-flex justify-content-between small text-muted">
-                    <span>Confidence: <strong id="pred-monthly-conf">--</strong></span>
-                    <span>Data Points: <strong id="pred-monthly-dp">--</strong></span>
+                <div class="mt-2 small text-muted">
+                    Confidence: <strong id="pred-weekly-conf">--</strong>
+                    | Points: <strong id="pred-weekly-dp">--</strong>
                 </div>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card border-warning">
-            <div class="card-header bg-warning text-dark">
-                <i class="bi bi-calendar"></i> Yearly Prediction
+    <!-- Monthly forecast -->
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card forecast-card">
+            <div class="card-header text-white" style="background: linear-gradient(135deg, #11998e, #38ef7d);">
+                <i class="bi bi-calendar-month"></i> 1 Month Forecast
+            </div>
+            <div class="card-body text-center">
+                <div class="forecast-value text-success" id="pred-monthly-growth">--</div>
+                <div class="forecast-label text-muted">Predicted Growth</div>
+                <hr class="my-2">
+                <h5 id="pred-monthly-total" class="mb-0">--</h5>
+                <small class="text-muted">Predicted Total</small>
+                <div class="mt-2">
+                    <span class="badge" style="background: var(--gradient-success);" id="pred-monthly-rate">--%</span>
+                </div>
+                <div class="mt-2 small text-muted">
+                    Confidence: <strong id="pred-monthly-conf">--</strong>
+                    | Points: <strong id="pred-monthly-dp">--</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Yearly forecast -->
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card forecast-card">
+            <div class="card-header text-white" style="background: linear-gradient(135deg, #f2994a, #f2c94c);">
+                <i class="bi bi-calendar"></i> 1 Year Forecast
+            </div>
+            <div class="card-body text-center">
+                <div class="forecast-value" style="color: #f2994a;" id="pred-yearly-growth">--</div>
+                <div class="forecast-label text-muted">Predicted Growth</div>
+                <hr class="my-2">
+                <h5 id="pred-yearly-total" class="mb-0">--</h5>
+                <small class="text-muted">Predicted Total</small>
+                <div class="mt-2">
+                    <span class="badge" style="background: var(--gradient-warning);" id="pred-yearly-rate">--%</span>
+                </div>
+                <div class="mt-2 small text-muted">
+                    Confidence: <strong id="pred-yearly-conf">--</strong>
+                    | Points: <strong id="pred-yearly-dp">--</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- 5-Year forecast -->
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card forecast-card">
+            <div class="card-header text-white" style="background: linear-gradient(135deg, #e74c3c, #c0392b);">
+                <i class="bi bi-calendar-range"></i> 5 Year Forecast
+            </div>
+            <div class="card-body text-center">
+                <div class="forecast-value text-danger" id="pred-five-year-growth">--</div>
+                <div class="forecast-label text-muted">Predicted Growth</div>
+                <hr class="my-2">
+                <h5 id="pred-five-year-total" class="mb-0">--</h5>
+                <small class="text-muted">Predicted Total</small>
+                <div class="mt-2">
+                    <span class="badge" style="background: var(--gradient-danger);" id="pred-five-year-rate">--%</span>
+                </div>
+                <div class="mt-2 small text-muted">
+                    Confidence: <strong id="pred-five-year-conf">--</strong>
+                    | Points: <strong id="pred-five-year-dp">--</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Purge Rate & Net Space Forecast Section -->
+<div class="row mb-4" id="purge-forecast-section" style="display: none;">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-recycle"></i> Purge Rate & Net Space Forecast
             </div>
             <div class="card-body">
-                <div class="text-center">
-                    <h4 id="pred-yearly-growth" class="text-warning">--</h4>
-                    <p class="text-muted mb-1">Predicted Growth</p>
-                    <h5 id="pred-yearly-rate" class="text-secondary">--</h5>
-                    <p class="text-muted mb-1">Growth Rate</p>
-                    <h5 id="pred-yearly-total" class="text-dark">--</h5>
-                    <p class="text-muted mb-0">Predicted Total</p>
+                <div class="row">
+                    <div class="col-md-3 text-center mb-3">
+                        <h6 class="text-muted text-uppercase small">Daily Purge Rate</h6>
+                        <h3 id="purge-rate-daily" class="fw-bold" style="color: #11998e;">--</h3>
+                    </div>
+                    <div class="col-md-3 text-center mb-3">
+                        <h6 class="text-muted text-uppercase small">After 1 Week (Net)</h6>
+                        <h3 id="net-forecast-week" class="fw-bold" style="color: #667eea;">--</h3>
+                    </div>
+                    <div class="col-md-3 text-center mb-3">
+                        <h6 class="text-muted text-uppercase small">After 1 Month (Net)</h6>
+                        <h3 id="net-forecast-month" class="fw-bold" style="color: #f2994a;">--</h3>
+                    </div>
+                    <div class="col-md-3 text-center mb-3">
+                        <h6 class="text-muted text-uppercase small">After 1 Year (Net)</h6>
+                        <h3 id="net-forecast-year" class="fw-bold" style="color: #e74c3c;">--</h3>
+                    </div>
                 </div>
-                <hr>
-                <div class="d-flex justify-content-between small text-muted">
-                    <span>Confidence: <strong id="pred-yearly-conf">--</strong></span>
-                    <span>Data Points: <strong id="pred-yearly-dp">--</strong></span>
+                <div class="row mt-2">
+                    <div class="col-md-6 text-center mb-3">
+                        <h6 class="text-muted text-uppercase small">After 5 Years (Net)</h6>
+                        <h3 id="net-forecast-5year" class="fw-bold" style="color: #c0392b;">--</h3>
+                    </div>
+                    <div class="col-md-6 text-center mb-3">
+                        <h6 class="text-muted text-uppercase small">Monthly Purge Potential</h6>
+                        <h3 id="purge-rate-monthly" class="fw-bold" style="color: #38ef7d;">--</h3>
+                    </div>
                 </div>
             </div>
         </div>
@@ -111,10 +180,10 @@
     <div class="col-12">
         <div class="card">
             <div class="card-header">
-                <i class="bi bi-graph-up"></i> Historical Space Usage Trend
+                <i class="bi bi-graph-up"></i> Historical Space Usage Trend with Forecast Projection
             </div>
             <div class="card-body">
-                <canvas id="trend-chart" height="300"></canvas>
+                <canvas id="trend-chart" height="350"></canvas>
             </div>
         </div>
     </div>
@@ -125,7 +194,7 @@
     <div class="col-12">
         <div class="card">
             <div class="card-header">
-                <i class="bi bi-table"></i> Growth Predictions by Sub-Application
+                <i class="bi bi-table"></i> Growth Forecast by Sub-Application
             </div>
             <div class="card-body">
                 <div class="table-responsive">
@@ -134,9 +203,10 @@
                             <tr>
                                 <th>Sub-App</th>
                                 <th>Current Size</th>
-                                <th>Weekly Growth</th>
-                                <th>Monthly Growth</th>
-                                <th>Yearly Growth</th>
+                                <th>1 Week</th>
+                                <th>1 Month</th>
+                                <th>1 Year</th>
+                                <th>5 Years</th>
                                 <th>Weekly Rate %</th>
                                 <th>Monthly Rate %</th>
                                 <th>Yearly Rate %</th>

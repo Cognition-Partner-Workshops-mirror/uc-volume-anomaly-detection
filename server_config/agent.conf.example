@@ -1,0 +1,41 @@
+# =============================================================================
+# Server Space Optimizer - Shell Agent Configuration
+#
+# Copy this file to agent.conf and edit the values for your server.
+# Used by space_agent.sh (shell-based agent, no Python required).
+#
+# Usage:
+#   cp agent.conf.example agent.conf
+#   vi agent.conf
+#   ./space_agent.sh --config ./agent.conf
+# =============================================================================
+
+# URL of the central dashboard server (FastAPI, Tomcat, etc.)
+SERVER_URL=http://dashboard-host:8080
+
+# Display name for this server in the dashboard
+SERVER_NAME=prod-server-1
+
+# Hostname or IP of this server (auto-detected if not set)
+SERVER_HOST=192.168.1.10
+
+# Root NAS mount path on this server
+NAS_MOUNT=/mnt/nas_prod
+
+# Scan interval in minutes (used in daemon mode; ignored with --once)
+SCAN_INTERVAL=60
+
+# Sub-applications to scan (comma-separated)
+# Format: name:path[,name:path:dedicated]
+#   - name:path           -> path is relative to NAS_MOUNT
+#   - name:path:dedicated -> path is absolute (dedicated mount point)
+#
+# Examples:
+#   SUB_APPS="billing:billing/data,logging:logs,archive:/mnt/archive:dedicated"
+#   SUB_APPS="app1:app1_data,app2:app2_data,shared_logs:logs"
+#
+SUB_APPS="billing:billing/data,logging:logs,archive:/mnt/nas_archive:dedicated"
+
+# Maximum number of files to include in the report payload
+# (files are sorted by size, largest first)
+# MAX_FILES_REPORT=5000

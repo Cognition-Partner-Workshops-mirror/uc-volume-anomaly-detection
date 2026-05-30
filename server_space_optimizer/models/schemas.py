@@ -62,7 +62,7 @@ class PurgeReport(BaseModel):
 class GrowthPrediction(BaseModel):
     """Volume growth prediction for a specific time period."""
     period: str = Field(
-        ..., description="Prediction period: weekly, monthly, or yearly"
+        ..., description="Prediction period: weekly, monthly, yearly, or five_year"
     )
     predicted_growth_bytes: float
     predicted_growth_human: str

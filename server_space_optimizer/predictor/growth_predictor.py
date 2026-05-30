@@ -10,7 +10,6 @@ import logging
 from datetime import datetime, timedelta
 
 import numpy as np
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from server_space_optimizer.models.database import SpaceSnapshot
@@ -131,9 +130,17 @@ class GrowthPredictor:
 
         predictions = []
 
+        # Forecast periods: 1 week, 1 month, 1 year, and 5 years
+        forecast_periods = [
+            ("weekly", 7),
+            ("monthly", 30),
+            ("yearly", 365),
+            ("five_year", 1825),
+        ]
+
         if len(historical_data) < 2:
             # Not enough data for predictions, return zero-growth estimates
-            for period, days in [("weekly", 7), ("monthly", 30), ("yearly", 365)]:
+            for period, days in forecast_periods:
                 predictions.append(
                     GrowthPrediction(
                         period=period,
@@ -159,7 +166,7 @@ class GrowthPredictor:
             # Slope is bytes/second; convert to bytes/day for predictions
             bytes_per_day = slope * 86400
 
-            for period, days in [("weekly", 7), ("monthly", 30), ("yearly", 365)]:
+            for period, days in forecast_periods:
                 predicted_growth = bytes_per_day * days
                 predicted_total = current_size + predicted_growth
                 growth_rate = (

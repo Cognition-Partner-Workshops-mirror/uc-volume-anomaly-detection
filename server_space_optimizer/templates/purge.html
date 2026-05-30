@@ -4,6 +4,12 @@
 {% block nav_purge %}active{% endblock %}
 
 {% block content %}
+<!-- Page header -->
+<div class="page-header">
+    <h3><i class="bi bi-trash3" style="color: #e74c3c;"></i> Purge Eligibility Report</h3>
+    <p>Identify old files eligible for cleanup to reclaim valuable disk space</p>
+</div>
+
 <!-- Purge report controls -->
 <div class="row mb-4">
     <div class="col-12">
@@ -46,27 +52,36 @@
 
 <!-- Purge summary cards -->
 <div class="row mb-4" id="purge-summary" style="display: none;">
-    <div class="col-md-4">
-        <div class="card border-danger">
+    <div class="col-md-4 mb-3">
+        <div class="card">
+            <div class="card-header text-white" style="background: var(--gradient-danger);">
+                <i class="bi bi-exclamation-triangle"></i> Total Purge Candidates
+            </div>
             <div class="card-body text-center">
-                <h6 class="text-muted">Total Purge Candidates</h6>
-                <h2 class="text-danger" id="purge-total-candidates">0</h2>
+                <h2 class="fw-bold" style="color: #e74c3c;" id="purge-total-candidates">0</h2>
+                <small class="text-muted">files eligible for cleanup</small>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card border-warning">
+    <div class="col-md-4 mb-3">
+        <div class="card">
+            <div class="card-header text-white" style="background: var(--gradient-warning);">
+                <i class="bi bi-hdd"></i> Reclaimable Space
+            </div>
             <div class="card-body text-center">
-                <h6 class="text-muted">Reclaimable Space</h6>
-                <h2 class="text-warning" id="purge-reclaimable-space">0 B</h2>
+                <h2 class="fw-bold" style="color: #f2994a;" id="purge-reclaimable-space">0 B</h2>
+                <small class="text-muted">can be freed up</small>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card border-info">
+    <div class="col-md-4 mb-3">
+        <div class="card">
+            <div class="card-header text-white" style="background: var(--gradient-info);">
+                <i class="bi bi-clock-history"></i> Threshold
+            </div>
             <div class="card-body text-center">
-                <h6 class="text-muted">Threshold</h6>
-                <h2 class="text-info" id="purge-threshold-display">0 days</h2>
+                <h2 class="fw-bold" style="color: #2193b0;" id="purge-threshold-display">0 days</h2>
+                <small class="text-muted">since last modification</small>
             </div>
         </div>
     </div>

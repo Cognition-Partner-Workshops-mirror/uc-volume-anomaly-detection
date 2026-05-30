@@ -22,7 +22,6 @@ from server_space_optimizer.models.database import (
 from server_space_optimizer.models.schemas import (
     DashboardSummary,
     ScanStatusResponse,
-    ServerGrowthReport,
     ServerSpaceInfo,
     SubAppSpaceInfo,
 )
@@ -253,8 +252,8 @@ def get_growth_predictions(
     """
     Get volume growth predictions for a server's sub-applications.
 
-    Returns weekly, monthly, and yearly growth predictions based on
-    historical usage data analyzed via linear regression.
+    Returns weekly, monthly, yearly, and 5-year growth predictions based
+    on historical usage data analyzed via linear regression.
     """
     predictor = GrowthPredictor(db)
 
@@ -264,6 +263,99 @@ def get_growth_predictions(
     else:
         reports = predictor.predict_all_sub_apps(server_name)
         return {"server_name": server_name, "predictions": reports}
+
+
+@router.get("/servers/{server_name}/purge-rate")
+def get_purge_rate(
+    server_name: str,
+    sub_app_name: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Calculate the purge rate (space freed per day) based on file aging.
+
+    Uses the difference between files entering purge eligibility
+    thresholds over recent snapshots to estimate daily purgeable volume.
+    Also returns net space forecasts (growth minus purge potential) for
+    1 week, 1 month, 1 year, and 5 years.
+    """
+    analyzer = PurgeAnalyzer(db)
+    predictor = GrowthPredictor(db)
+
+    # Get purge data at multiple thresholds
+    thresholds = _app_config.purge_thresholds_days if _app_config else [90, 180, 365]
+    purge_reports = analyzer.get_purge_summary(
+        server_name=server_name, thresholds=thresholds
+    )
+
+    # Estimate daily purge rate from the oldest threshold bucket
+    total_purgeable = 0
+    oldest_threshold = max(thresholds) if thresholds else 365
+    for report in purge_reports:
+        if report.threshold_days == oldest_threshold:
+            total_purgeable = report.total_reclaimable_bytes
+
+    # Daily purge rate: purgeable bytes divided by threshold period
+    daily_purge_rate = total_purgeable / oldest_threshold if oldest_threshold > 0 else 0
+    monthly_purge_rate = daily_purge_rate * 30
+
+    # Get growth predictions for net forecast
+    if sub_app_name:
+        growth_report = predictor.predict_growth(server_name, sub_app_name)
+        predictions = growth_report.predictions
+        current_size = growth_report.current_size_bytes
+    else:
+        # Aggregate across all sub-apps
+        all_reports = predictor.predict_all_sub_apps(server_name)
+        current_size = sum(r.current_size_bytes for r in all_reports)
+        # Aggregate predictions by period
+        predictions = []
+        periods = ["weekly", "monthly", "yearly", "five_year"]
+        for period in periods:
+            total_growth = sum(
+                next(
+                    (
+                        p.predicted_growth_bytes
+                        for p in r.predictions
+                        if p.period == period
+                    ),
+                    0,
+                )
+                for r in all_reports
+            )
+            predictions.append(type("Pred", (), {
+                "period": period,
+                "predicted_growth_bytes": total_growth,
+            }))
+
+    # Calculate net forecasts: growth minus purge potential per period
+    net_forecasts = {}
+    period_days = {"weekly": 7, "monthly": 30, "yearly": 365, "five_year": 1825}
+    for pred in predictions:
+        days = period_days.get(pred.period, 0)
+        purge_in_period = daily_purge_rate * days
+        net_change = pred.predicted_growth_bytes - purge_in_period
+        net_total = current_size + net_change
+        net_forecasts[pred.period] = {
+            "net_change_bytes": net_change,
+            "net_change_human": format_size(abs(net_change)),
+            "net_change_direction": "increase" if net_change > 0 else "decrease",
+            "net_total_bytes": max(0, net_total),
+            "net_total_human": format_size(max(0, net_total)),
+        }
+
+    return {
+        "server_name": server_name,
+        "current_size_bytes": current_size,
+        "current_size_human": format_size(current_size),
+        "daily_purge_rate_bytes": daily_purge_rate,
+        "daily_purge_rate_human": format_size(daily_purge_rate),
+        "monthly_purge_rate_bytes": monthly_purge_rate,
+        "monthly_purge_rate_human": format_size(monthly_purge_rate),
+        "total_purgeable_bytes": total_purgeable,
+        "total_purgeable_human": format_size(total_purgeable),
+        "net_forecasts": net_forecasts,
+    }
 
 
 @router.get("/scan/status", response_model=ScanStatusResponse)
@@ -309,6 +401,84 @@ def trigger_scan(
         "status": "started",
         "scan_type": "full" if force_full else "incremental",
         "message": "Scan triggered successfully",
+    }
+
+
+@router.post("/agent/report")
+def receive_agent_report(
+    report: dict,
+    db: Session = Depends(get_db),
+):
+    """
+    Receive scan metrics from a remote Linux agent (shell or Python).
+
+    Agents running on Linux servers POST their scan results here as JSON.
+    Compatible with any client: curl from shell scripts, httpx from Python,
+    or Java HttpClient from Tomcat/Spring servlets.
+    The data is stored in the same database tables as local scans,
+    making remote agents transparent to the dashboard and prediction engine.
+    """
+    from datetime import datetime
+
+    # Extract fields from the agent report payload
+    server_name = report.get("server_name", "unknown")
+    sub_app_name = report.get("sub_app_name", "unknown")
+    total_size = report.get("total_size_bytes", 0)
+    file_count = report.get("file_count", 0)
+    dir_count = report.get("dir_count", 0)
+    scan_ts = report.get("scan_timestamp")
+    now = datetime.fromisoformat(scan_ts) if scan_ts else datetime.utcnow()
+
+    # Store scan result record for dashboard display
+    scan_record = ScanResult(
+        server_name=server_name,
+        sub_app_name=sub_app_name,
+        scan_timestamp=now,
+        total_size_bytes=total_size,
+        total_file_count=file_count,
+        total_dir_count=dir_count,
+        scan_type=report.get("scan_type", "agent"),
+        scan_duration_seconds=0,
+    )
+    db.add(scan_record)
+
+    # Store space snapshot for growth prediction regression
+    snapshot = SpaceSnapshot(
+        server_name=server_name,
+        sub_app_name=sub_app_name,
+        snapshot_timestamp=now,
+        total_size_bytes=total_size,
+        total_file_count=file_count,
+    )
+    db.add(snapshot)
+
+    # Store file metadata if the agent included per-file details
+    files_data = report.get("files", [])
+    for fdata in files_data:
+        file_meta = FileMetadata(
+            server_name=server_name,
+            sub_app_name=sub_app_name,
+            file_path=fdata.get("path", ""),
+            file_size_bytes=fdata.get("size_bytes", 0),
+            last_modified=datetime.fromisoformat(fdata["last_modified"]),
+            last_accessed=datetime.fromisoformat(fdata["last_accessed"]),
+            created_at=datetime.fromisoformat(fdata["created_at"]),
+            last_scanned=now,
+            is_deleted=0,
+        )
+        db.add(file_meta)
+
+    db.commit()
+
+    logger.info(
+        "Agent report received: server=%s, sub_app=%s, size=%s, files=%d",
+        server_name, sub_app_name, format_size(total_size), file_count,
+    )
+
+    return {
+        "status": "accepted",
+        "server_name": server_name,
+        "sub_app_name": sub_app_name,
     }
 
 
