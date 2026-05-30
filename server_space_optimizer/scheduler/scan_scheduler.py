@@ -13,7 +13,7 @@ from typing import Optional
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from server_space_optimizer.config import AppConfig
-from server_space_optimizer.models.database import get_session, init_database
+from server_space_optimizer.models.database import get_session
 from server_space_optimizer.scanner.incremental_scanner import IncrementalScanner
 from server_space_optimizer.scanner.path_resolver import resolve_sub_app_paths
 
@@ -28,10 +28,11 @@ class ScanScheduler:
     incremental mode for efficiency on large (10TB+) filesystems.
     """
 
-    def __init__(self, config: AppConfig):
+    def __init__(self, config: AppConfig, session_factory=None):
         self.config = config
         self.scheduler = BackgroundScheduler()
-        self.session_factory = init_database(config.database_path)
+        # Accept pre-initialized session_factory to avoid duplicate SQLite engines
+        self.session_factory = session_factory
         self._is_scanning = False
         self._last_scan_time: Optional[datetime] = None
         self._next_scan_time: Optional[datetime] = None

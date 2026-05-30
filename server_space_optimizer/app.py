@@ -62,8 +62,8 @@ async def lifespan(app: FastAPI):
     session_factory = init_database(config.database_path)
     logger.info("Database initialized at: %s", config.database_path)
 
-    # Create and start the scan scheduler
-    _scheduler = ScanScheduler(config)
+    # Create and start the scan scheduler (pass session_factory to share one engine)
+    _scheduler = ScanScheduler(config, session_factory=session_factory)
 
     # Inject dependencies into API routes
     set_dependencies(session_factory, _scheduler, config)

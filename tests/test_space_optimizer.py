@@ -157,12 +157,13 @@ class TestDirectoryScanning:
         """Incremental scan should only return recently modified files."""
         billing_path = os.path.join(temp_dir, "billing")
         # All files were just created, so they are all "recent"
-        one_hour_ago = datetime.now() - timedelta(hours=1)
+        # Use UTC to match scan_files_since which uses calendar.timegm (UTC)
+        one_hour_ago = datetime.utcnow() - timedelta(hours=1)
         recent_files = list(scan_files_since(billing_path, one_hour_ago))
         assert len(recent_files) == 5
 
         # Use a future timestamp - no files should match
-        future = datetime.now() + timedelta(hours=1)
+        future = datetime.utcnow() + timedelta(hours=1)
         no_files = list(scan_files_since(billing_path, future))
         assert len(no_files) == 0
 
@@ -379,7 +380,8 @@ class TestGrowthPredictor:
         predictor = GrowthPredictor(db_session)
         report = predictor.predict_growth("test-server", "billing")
 
-        assert len(report.predictions) == 3
+        # 4 forecast periods: weekly, monthly, yearly, five_year
+        assert len(report.predictions) == 4
         for pred in report.predictions:
             assert pred.predicted_growth_bytes == 0
             assert pred.confidence == 0
@@ -405,7 +407,8 @@ class TestGrowthPredictor:
         predictor = GrowthPredictor(db_session)
         report = predictor.predict_growth("test-server", "billing")
 
-        assert len(report.predictions) == 3
+        # 4 forecast periods: weekly, monthly, yearly, five_year
+        assert len(report.predictions) == 4
         # With consistent growth, predictions should be positive
         weekly = next(p for p in report.predictions if p.period == "weekly")
         monthly = next(p for p in report.predictions if p.period == "monthly")
