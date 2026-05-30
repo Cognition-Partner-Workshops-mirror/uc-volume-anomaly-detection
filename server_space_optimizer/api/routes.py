@@ -1,22 +1,28 @@
 """
-REST API routes for the Server Space Optimizer web interface.
+REST API routes for Volume Anomaly Detection & Storage Forecaster.
 
 Provides endpoints for dashboard data, server/sub-app space details,
-purge eligibility reports, growth predictions, and scan management.
-All endpoints return JSON for consumption by the frontend dashboard.
+purge eligibility reports, growth predictions, scan management,
+file extension analytics, dynamic sub-app config CRUD, cost estimation,
+and mount path configuration.
 """
 
 import logging
+import os
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from server_space_optimizer.models.database import (
+    AppSettings,
     FileMetadata,
     ScanResult,
     SpaceSnapshot,
+    SubAppConfigDB,
     get_session,
 )
 from server_space_optimizer.models.schemas import (
@@ -453,13 +459,17 @@ def receive_agent_report(
     db.add(snapshot)
 
     # Store file metadata if the agent included per-file details
+    # Extract file extension from path for file extension analytics
     files_data = report.get("files", [])
     for fdata in files_data:
+        fpath = fdata.get("path", "")
+        _, ext = os.path.splitext(fpath)
         file_meta = FileMetadata(
             server_name=server_name,
             sub_app_name=sub_app_name,
-            file_path=fdata.get("path", ""),
+            file_path=fpath,
             file_size_bytes=fdata.get("size_bytes", 0),
+            file_extension=ext.lower() if ext else "",
             last_modified=datetime.fromisoformat(fdata["last_modified"]),
             last_accessed=datetime.fromisoformat(fdata["last_accessed"]),
             created_at=datetime.fromisoformat(fdata["created_at"]),
@@ -494,7 +504,7 @@ def get_space_history(
 
     Returns time-series data of space snapshots for the specified period.
     """
-    from datetime import datetime, timedelta
+    from datetime import timedelta
 
     cutoff = datetime.utcnow() - timedelta(days=days)
 
@@ -522,3 +532,486 @@ def get_space_history(
             for snap in snapshots
         ],
     }
+
+
+# ========================================================================
+# File Extension Analytics API
+# ========================================================================
+
+# Map of file extensions to human-readable format descriptions
+EXTENSION_FORMATS = {
+    ".log": "Log File",
+    ".txt": "Plain Text",
+    ".csv": "Comma-Separated Values",
+    ".json": "JSON Data",
+    ".xml": "XML Markup",
+    ".yaml": "YAML Config",
+    ".yml": "YAML Config",
+    ".conf": "Configuration File",
+    ".cfg": "Configuration File",
+    ".ini": "INI Config",
+    ".properties": "Java Properties",
+    ".gz": "Gzip Compressed",
+    ".tar": "Tar Archive",
+    ".tar.gz": "Tar+Gzip Archive",
+    ".zip": "ZIP Archive",
+    ".bz2": "Bzip2 Compressed",
+    ".xz": "XZ Compressed",
+    ".7z": "7-Zip Archive",
+    ".rar": "RAR Archive",
+    ".pdf": "PDF Document",
+    ".doc": "MS Word Document",
+    ".docx": "MS Word Document (XML)",
+    ".xls": "MS Excel Spreadsheet",
+    ".xlsx": "MS Excel Spreadsheet (XML)",
+    ".ppt": "MS PowerPoint",
+    ".pptx": "MS PowerPoint (XML)",
+    ".png": "PNG Image",
+    ".jpg": "JPEG Image",
+    ".jpeg": "JPEG Image",
+    ".gif": "GIF Image",
+    ".svg": "SVG Vector Image",
+    ".bmp": "Bitmap Image",
+    ".mp4": "MPEG-4 Video",
+    ".avi": "AVI Video",
+    ".wav": "WAV Audio",
+    ".mp3": "MP3 Audio",
+    ".dat": "Data File",
+    ".bin": "Binary File",
+    ".bak": "Backup File",
+    ".tmp": "Temporary File",
+    ".db": "Database File",
+    ".sql": "SQL Script",
+    ".py": "Python Script",
+    ".java": "Java Source",
+    ".class": "Java Bytecode",
+    ".jar": "Java Archive",
+    ".war": "Web App Archive",
+    ".sh": "Shell Script",
+    ".bat": "Batch Script",
+    ".exe": "Windows Executable",
+    ".dll": "Dynamic Link Library",
+    ".so": "Shared Object",
+    ".o": "Object File",
+    ".parquet": "Parquet Columnar",
+    ".avro": "Avro Serialized",
+    ".orc": "ORC Columnar",
+}
+
+# Optimization recommendations keyed by extension or category
+OPTIMIZATION_RULES = [
+    {
+        "extensions": [".log", ".txt", ".csv", ".json", ".xml", ".sql"],
+        "condition": "uncompressed, older than 30 days, and larger than 100 MB",
+        "recommendation": (
+            "Compress with gzip/bzip2 to save 60-90% space. "
+            "Example: gzip -9 filename.log"
+        ),
+        "severity": "high",
+    },
+    {
+        "extensions": [".bak", ".tmp"],
+        "condition": "backup/temp files older than 7 days",
+        "recommendation": (
+            "Remove old backup and temporary files. "
+            "These are usually safe to delete after verification."
+        ),
+        "severity": "high",
+    },
+    {
+        "extensions": [".log"],
+        "condition": "log files older than 90 days",
+        "recommendation": (
+            "Implement log rotation and archival. "
+            "Consider logrotate for automatic management."
+        ),
+        "severity": "medium",
+    },
+    {
+        "extensions": [".dat", ".bin"],
+        "condition": "large binary files with no recent access",
+        "recommendation": (
+            "Move to cold/archive storage if not accessed recently. "
+            "Consider data lifecycle policies."
+        ),
+        "severity": "medium",
+    },
+    {
+        "extensions": [".bmp", ".wav"],
+        "condition": "uncompressed media formats",
+        "recommendation": (
+            "Convert BMP to PNG/JPEG, WAV to MP3/FLAC for significant "
+            "space savings without quality loss."
+        ),
+        "severity": "low",
+    },
+    {
+        "extensions": [".parquet", ".avro", ".orc"],
+        "condition": "columnar data files",
+        "recommendation": (
+            "These are already optimized formats. Consider partitioning "
+            "and lifecycle policies for old partitions."
+        ),
+        "severity": "info",
+    },
+]
+
+
+@router.get("/extensions")
+def get_file_extensions(
+    server_name: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Get unique file extensions with counts, sizes, and format descriptions.
+
+    Queries file_metadata to aggregate by extension, then enriches with
+    format descriptions and optimization recommendations.
+    """
+    query = db.query(
+        FileMetadata.file_extension,
+        func.count(FileMetadata.id).label("file_count"),
+        func.sum(FileMetadata.file_size_bytes).label("total_size"),
+        func.avg(FileMetadata.file_size_bytes).label("avg_size"),
+        func.min(FileMetadata.last_modified).label("oldest_file"),
+        func.max(FileMetadata.last_modified).label("newest_file"),
+    ).filter(
+        FileMetadata.is_deleted == 0,
+    )
+
+    if server_name:
+        query = query.filter(FileMetadata.server_name == server_name)
+
+    results = query.group_by(FileMetadata.file_extension).order_by(
+        func.sum(FileMetadata.file_size_bytes).desc()
+    ).all()
+
+    extensions = []
+    for row in results:
+        ext = row.file_extension or "(no extension)"
+        ext_lower = ext.lower()
+        format_desc = EXTENSION_FORMATS.get(ext_lower, "Unknown Format")
+
+        # Find applicable optimization recommendations
+        recommendations = []
+        for rule in OPTIMIZATION_RULES:
+            if ext_lower in rule["extensions"]:
+                recommendations.append({
+                    "condition": rule["condition"],
+                    "recommendation": rule["recommendation"],
+                    "severity": rule["severity"],
+                })
+
+        extensions.append({
+            "extension": ext,
+            "format": format_desc,
+            "file_count": row.file_count,
+            "total_size_bytes": row.total_size or 0,
+            "total_size_human": format_size(row.total_size or 0),
+            "avg_size_bytes": row.avg_size or 0,
+            "avg_size_human": format_size(row.avg_size or 0),
+            "oldest_file": (
+                row.oldest_file.isoformat() if row.oldest_file else None
+            ),
+            "newest_file": (
+                row.newest_file.isoformat() if row.newest_file else None
+            ),
+            "recommendations": recommendations,
+        })
+
+    return {"extensions": extensions, "total_types": len(extensions)}
+
+
+# ========================================================================
+# Dynamic Sub-App Configuration CRUD API
+# ========================================================================
+
+class SubAppConfigRequest(BaseModel):
+    """Request body for creating/updating a sub-app configuration."""
+    server_name: str
+    sub_app_name: str
+    path: str = ""
+    patterns: str = ""
+    is_dedicated_mount: bool = False
+
+
+@router.get("/config/sub-apps")
+def list_sub_app_configs(
+    server_name: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """List all sub-app configurations stored in the database."""
+    query = db.query(SubAppConfigDB)
+    if server_name:
+        query = query.filter(SubAppConfigDB.server_name == server_name)
+
+    configs = query.order_by(
+        SubAppConfigDB.server_name, SubAppConfigDB.sub_app_name
+    ).all()
+
+    return {
+        "configs": [
+            {
+                "id": c.id,
+                "server_name": c.server_name,
+                "sub_app_name": c.sub_app_name,
+                "path": c.path,
+                "patterns": c.patterns,
+                "is_dedicated_mount": bool(c.is_dedicated_mount),
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+                "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+            }
+            for c in configs
+        ]
+    }
+
+
+@router.post("/config/sub-apps")
+def create_sub_app_config(
+    config: SubAppConfigRequest,
+    db: Session = Depends(get_db),
+):
+    """Create a new sub-app configuration entry in the database."""
+    new_config = SubAppConfigDB(
+        server_name=config.server_name,
+        sub_app_name=config.sub_app_name,
+        path=config.path,
+        patterns=config.patterns,
+        is_dedicated_mount=1 if config.is_dedicated_mount else 0,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    db.add(new_config)
+    db.commit()
+    db.refresh(new_config)
+
+    logger.info(
+        "Sub-app config created: server=%s, sub_app=%s",
+        config.server_name,
+        config.sub_app_name,
+    )
+
+    return {
+        "status": "created",
+        "id": new_config.id,
+        "server_name": new_config.server_name,
+        "sub_app_name": new_config.sub_app_name,
+    }
+
+
+@router.put("/config/sub-apps/{config_id}")
+def update_sub_app_config(
+    config_id: int,
+    config: SubAppConfigRequest,
+    db: Session = Depends(get_db),
+):
+    """Update an existing sub-app configuration entry."""
+    existing = db.query(SubAppConfigDB).filter(
+        SubAppConfigDB.id == config_id
+    ).first()
+
+    if not existing:
+        return {"status": "error", "message": "Configuration not found"}
+
+    existing.server_name = config.server_name
+    existing.sub_app_name = config.sub_app_name
+    existing.path = config.path
+    existing.patterns = config.patterns
+    existing.is_dedicated_mount = 1 if config.is_dedicated_mount else 0
+    existing.updated_at = datetime.utcnow()
+    db.commit()
+
+    logger.info("Sub-app config updated: id=%d", config_id)
+
+    return {"status": "updated", "id": config_id}
+
+
+@router.delete("/config/sub-apps/{config_id}")
+def delete_sub_app_config(
+    config_id: int,
+    db: Session = Depends(get_db),
+):
+    """Delete a sub-app configuration entry."""
+    existing = db.query(SubAppConfigDB).filter(
+        SubAppConfigDB.id == config_id
+    ).first()
+
+    if not existing:
+        return {"status": "error", "message": "Configuration not found"}
+
+    db.delete(existing)
+    db.commit()
+
+    logger.info("Sub-app config deleted: id=%d", config_id)
+
+    return {"status": "deleted", "id": config_id}
+
+
+# ========================================================================
+# Cost Estimation API
+# ========================================================================
+
+@router.get("/cost-estimation")
+def get_cost_estimation(
+    server_name: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Get storage cost estimations based on configured dollar rate.
+
+    Multiplies current and predicted space by cost_per_gb_month to
+    produce financial forecasts for 1 week, 1 month, 1 year, 5 years.
+    """
+    # Read cost rate from DB settings or fall back to config
+    cost_rate = _app_config.cost_per_gb_month if _app_config else 0.023
+    rate_setting = db.query(AppSettings).filter(
+        AppSettings.setting_key == "cost_per_gb_month"
+    ).first()
+    if rate_setting:
+        try:
+            cost_rate = float(rate_setting.setting_value)
+        except ValueError:
+            pass
+
+    # Get current total size across all or specific server
+    if server_name:
+        size_result = db.query(
+            func.sum(ScanResult.total_size_bytes)
+        ).filter(
+            ScanResult.server_name == server_name,
+        ).scalar() or 0
+    else:
+        size_result = db.query(
+            func.sum(ScanResult.total_size_bytes)
+        ).scalar() or 0
+
+    current_gb = size_result / (1024 ** 3)
+    monthly_cost = current_gb * cost_rate
+
+    # Get growth predictions for cost projection
+    period_months = {
+        "weekly": 7 / 30,
+        "monthly": 1,
+        "yearly": 12,
+        "five_year": 60,
+    }
+
+    cost_forecasts = {}
+    for period, months in period_months.items():
+        projected_cost = monthly_cost * months
+        cost_forecasts[period] = {
+            "months": months,
+            "estimated_cost": round(projected_cost, 2),
+            "formatted": f"${projected_cost:,.2f}",
+        }
+
+    return {
+        "cost_per_gb_month": cost_rate,
+        "current_size_gb": round(current_gb, 2),
+        "current_monthly_cost": round(monthly_cost, 2),
+        "current_monthly_cost_formatted": f"${monthly_cost:,.2f}",
+        "forecasts": cost_forecasts,
+    }
+
+
+# ========================================================================
+# Application Settings API (cost rate, excluded mounts)
+# ========================================================================
+
+class SettingUpdate(BaseModel):
+    """Request body for updating a setting."""
+    value: str
+
+
+@router.get("/settings")
+def get_settings(db: Session = Depends(get_db)):
+    """Get all application settings."""
+    settings = db.query(AppSettings).all()
+    result = {}
+    for s in settings:
+        result[s.setting_key] = s.setting_value
+
+    # Include config defaults if not overridden in DB
+    if "cost_per_gb_month" not in result:
+        result["cost_per_gb_month"] = str(
+            _app_config.cost_per_gb_month if _app_config else 0.023
+        )
+    if "excluded_mounts" not in result:
+        result["excluded_mounts"] = ",".join(
+            _app_config.excluded_mounts if _app_config else []
+        )
+
+    return {"settings": result}
+
+
+@router.put("/settings/{key}")
+def update_setting(
+    key: str,
+    update: SettingUpdate,
+    db: Session = Depends(get_db),
+):
+    """Update a single application setting."""
+    existing = db.query(AppSettings).filter(
+        AppSettings.setting_key == key
+    ).first()
+
+    if existing:
+        existing.setting_value = update.value
+        existing.updated_at = datetime.utcnow()
+    else:
+        new_setting = AppSettings(
+            setting_key=key,
+            setting_value=update.value,
+            updated_at=datetime.utcnow(),
+        )
+        db.add(new_setting)
+
+    db.commit()
+    logger.info("Setting updated: %s = %s", key, update.value)
+
+    return {"status": "updated", "key": key, "value": update.value}
+
+
+# ========================================================================
+# Mount Path Configuration API
+# ========================================================================
+
+@router.get("/config/excluded-mounts")
+def get_excluded_mounts(db: Session = Depends(get_db)):
+    """Get the list of excluded system mount paths."""
+    # Check DB override first
+    setting = db.query(AppSettings).filter(
+        AppSettings.setting_key == "excluded_mounts"
+    ).first()
+
+    if setting and setting.setting_value:
+        mounts = [m.strip() for m in setting.setting_value.split(",") if m.strip()]
+    else:
+        mounts = _app_config.excluded_mounts if _app_config else []
+
+    return {"excluded_mounts": mounts}
+
+
+@router.put("/config/excluded-mounts")
+def update_excluded_mounts(
+    update: SettingUpdate,
+    db: Session = Depends(get_db),
+):
+    """Update the list of excluded system mount paths."""
+    existing = db.query(AppSettings).filter(
+        AppSettings.setting_key == "excluded_mounts"
+    ).first()
+
+    if existing:
+        existing.setting_value = update.value
+        existing.updated_at = datetime.utcnow()
+    else:
+        new_setting = AppSettings(
+            setting_key="excluded_mounts",
+            setting_value=update.value,
+            updated_at=datetime.utcnow(),
+        )
+        db.add(new_setting)
+
+    db.commit()
+    return {"status": "updated", "excluded_mounts": update.value.split(",")}

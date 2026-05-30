@@ -39,3 +39,8 @@ SUB_APPS="billing:billing/data,logging:logs,archive:/mnt/nas_archive:dedicated"
 # Maximum number of files to include in the report payload
 # (files are sorted by size, largest first)
 # MAX_FILES_REPORT=5000
+
+# System mount paths to EXCLUDE from scanning (comma-separated).
+# Files under these paths will be skipped even if they fall under NAS_MOUNT.
+# Default exclusions if not set: /var,/opt,/home,/optware,/tmp,/etc,/boot
+EXCLUDED_MOUNTS="/var,/opt,/home,/optware,/tmp,/etc,/boot,/proc,/sys,/dev,/run"

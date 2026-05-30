@@ -85,14 +85,17 @@ class IncrementalScanner:
             FileMetadata.sub_app_name == sub_app_name,
         ).delete()
 
-        # Store metadata for each discovered file
+        # Store metadata for each discovered file, extracting file extension
         now = datetime.utcnow()
         for file_info in scan_result.files:
+            # Extract file extension using os.path.splitext for analytics
+            _, ext = os.path.splitext(file_info.path)
             file_meta = FileMetadata(
                 server_name=server_name,
                 sub_app_name=sub_app_name,
                 file_path=file_info.path,
                 file_size_bytes=file_info.size_bytes,
+                file_extension=ext.lower() if ext else "",
                 last_modified=file_info.last_modified,
                 last_accessed=file_info.last_accessed,
                 created_at=file_info.created_at,
@@ -186,12 +189,14 @@ class IncrementalScanner:
                 existing.is_deleted = 0
                 modified_count += 1
             else:
-                # New file discovered
+                # New file discovered — extract extension for analytics
+                _, ext = os.path.splitext(file_info.path)
                 new_meta = FileMetadata(
                     server_name=server_name,
                     sub_app_name=sub_app_name,
                     file_path=file_info.path,
                     file_size_bytes=file_info.size_bytes,
+                    file_extension=ext.lower() if ext else "",
                     last_modified=file_info.last_modified,
                     last_accessed=file_info.last_accessed,
                     created_at=file_info.created_at,

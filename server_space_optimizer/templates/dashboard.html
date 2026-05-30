@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - Server Space Optimizer{% endblock %}
+{% block title %}Dashboard - {{ product_name }}{% endblock %}
 {% block nav_dashboard %}active{% endblock %}
 
 {% block content %}
@@ -10,9 +10,9 @@
     <p>Real-time view of NAS mount space usage across all Linux servers</p>
 </div>
 
-<!-- Summary cards row -->
+<!-- Summary cards row (5 cards including cost) -->
 <div class="row mb-4" id="summary-cards">
-    <div class="col-lg-3 col-md-6 mb-3">
+    <div class="col-xl col-md-6 mb-3">
         <div class="card summary-card bg-primary text-white">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
@@ -25,7 +25,7 @@
             </div>
         </div>
     </div>
-    <div class="col-lg-3 col-md-6 mb-3">
+    <div class="col-xl col-md-6 mb-3">
         <div class="card summary-card bg-success text-white">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
@@ -38,7 +38,7 @@
             </div>
         </div>
     </div>
-    <div class="col-lg-3 col-md-6 mb-3">
+    <div class="col-xl col-md-6 mb-3">
         <div class="card summary-card bg-info text-white">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
@@ -51,7 +51,7 @@
             </div>
         </div>
     </div>
-    <div class="col-lg-3 col-md-6 mb-3">
+    <div class="col-xl col-md-6 mb-3">
         <div class="card summary-card bg-warning text-white">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
@@ -60,6 +60,20 @@
                         <h2 class="card-title mb-0" id="total-files">0</h2>
                     </div>
                     <i class="bi bi-file-earmark display-4"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Cost estimation card on the dashboard -->
+    <div class="col-xl col-md-6 mb-3">
+        <div class="card summary-card" style="background: linear-gradient(135deg, #8e44ad, #3498db); color: white;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-1" style="opacity:0.9;text-transform:uppercase;letter-spacing:1px;font-weight:600;font-size:0.8rem;">Monthly Cost</h6>
+                        <h2 class="card-title mb-0" id="dashboard-monthly-cost" style="font-size:2.2rem;font-weight:800;text-shadow:0 2px 4px rgba(0,0,0,0.15);">--</h2>
+                    </div>
+                    <i class="bi bi-currency-dollar display-4" style="opacity:0.3;font-size:3.5rem;"></i>
                 </div>
             </div>
         </div>
@@ -120,11 +134,20 @@
 
 {% block extra_js %}
 <script>
-    // Load dashboard data on page load
+    // Load dashboard data and cost estimation on page load
     document.addEventListener('DOMContentLoaded', function() {
         refreshDashboard();
+        loadDashboardCost();
         // Auto-refresh every 2 minutes to show latest scan data
         setInterval(refreshDashboard, 120000);
+        setInterval(loadDashboardCost, 120000);
     });
+
+    // Fetch and display cost estimation on the dashboard
+    async function loadDashboardCost() {
+        const data = await apiFetch('/api/cost-estimation');
+        if (!data) return;
+        updateElement('dashboard-monthly-cost', data.current_monthly_cost_formatted);
+    }
 </script>
 {% endblock %}

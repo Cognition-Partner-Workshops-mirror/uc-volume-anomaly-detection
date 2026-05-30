@@ -107,6 +107,23 @@ load_config() {
     SERVER_HOST="${SERVER_HOST:-$(hostname)}"
     SCAN_INTERVAL="${SCAN_INTERVAL:-60}"
     SUB_APPS="${SUB_APPS:-}"
+    # Default excluded system mounts if not configured
+    EXCLUDED_MOUNTS="${EXCLUDED_MOUNTS:-/var,/opt,/home,/optware,/tmp,/etc,/boot,/proc,/sys,/dev,/run}"
+}
+
+# ---- Check if a path falls under any excluded mount ----
+is_excluded_path() {
+    local check_path="$1"
+    local IFS=','
+    for excluded in ${EXCLUDED_MOUNTS}; do
+        # Strip whitespace
+        excluded="$(echo "${excluded}" | xargs)"
+        if [[ "${check_path}" == "${excluded}"* ]]; then
+            log "DEBUG" "Path excluded: ${check_path} (matches ${excluded})"
+            return 0
+        fi
+    done
+    return 1
 }
 
 # ---- Get total size of a directory in bytes ----
@@ -257,6 +274,12 @@ scan_all_sub_apps() {
     local scan_start
     scan_start=$(date +%s)
 
+    # Check if NAS_MOUNT itself is under an excluded system path
+    if is_excluded_path "${NAS_MOUNT}"; then
+        log "WARN" "NAS_MOUNT ${NAS_MOUNT} is under an excluded path; skipping scan"
+        return
+    fi
+
     if [[ -z "${SUB_APPS}" ]]; then
         # No sub-apps configured; scan entire NAS mount as one entry
         scan_sub_app "default" "${NAS_MOUNT}"
@@ -269,13 +292,20 @@ scan_all_sub_apps() {
             local app_path="${parts[1]:-${app_name}}"
             local app_type="${parts[2]:-relative}"
 
+            local resolved_path
             if [[ "${app_type}" == "dedicated" ]]; then
-                # Absolute path (dedicated mount)
-                scan_sub_app "${app_name}" "${app_path}"
+                resolved_path="${app_path}"
             else
-                # Relative to NAS_MOUNT
-                scan_sub_app "${app_name}" "${NAS_MOUNT}/${app_path}"
+                resolved_path="${NAS_MOUNT}/${app_path}"
             fi
+
+            # Skip paths under excluded system mounts
+            if is_excluded_path "${resolved_path}"; then
+                log "WARN" "Skipping excluded sub-app path: ${resolved_path}"
+                continue
+            fi
+
+            scan_sub_app "${app_name}" "${resolved_path}"
         done
     fi
 

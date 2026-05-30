@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Growth & Forecast - Server Space Optimizer{% endblock %}
+{% block title %}Growth & Forecast - {{ product_name }}{% endblock %}
 {% block nav_predictions %}active{% endblock %}
 
 {% block content %}
@@ -189,6 +189,45 @@
     </div>
 </div>
 
+<!-- Cost estimation section tied to predictions -->
+<div class="row mb-4" id="cost-forecast-section" style="display: none;">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header" style="background: linear-gradient(135deg, #8e44ad, #3498db); color: white;">
+                <i class="bi bi-currency-dollar"></i> Storage Cost Forecast
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-2 mb-3">
+                        <h6 class="text-muted text-uppercase small">Rate</h6>
+                        <h4 class="fw-bold" style="color: #8e44ad;" id="pred-cost-rate">--</h4>
+                    </div>
+                    <div class="col-md-2 mb-3">
+                        <h6 class="text-muted text-uppercase small">Weekly</h6>
+                        <h4 class="fw-bold" style="color: #667eea;" id="pred-cost-weekly">--</h4>
+                    </div>
+                    <div class="col-md-2 mb-3">
+                        <h6 class="text-muted text-uppercase small">Monthly</h6>
+                        <h4 class="fw-bold" style="color: #11998e;" id="pred-cost-monthly">--</h4>
+                    </div>
+                    <div class="col-md-2 mb-3">
+                        <h6 class="text-muted text-uppercase small">Yearly</h6>
+                        <h4 class="fw-bold" style="color: #f2994a;" id="pred-cost-yearly">--</h4>
+                    </div>
+                    <div class="col-md-2 mb-3">
+                        <h6 class="text-muted text-uppercase small">5 Years</h6>
+                        <h4 class="fw-bold" style="color: #e74c3c;" id="pred-cost-5year">--</h4>
+                    </div>
+                    <div class="col-md-2 mb-3">
+                        <h6 class="text-muted text-uppercase small">Current GB</h6>
+                        <h4 class="fw-bold" style="color: #2c3e50;" id="pred-cost-gb">--</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Prediction table for all sub-apps -->
 <div class="row" id="prediction-table-container" style="display: none;">
     <div class="col-12">
@@ -229,5 +268,25 @@
     document.addEventListener('DOMContentLoaded', function() {
         populateServerDropdowns();
     });
+
+    // Override loadPredictions to also fetch cost data
+    const _origLoadPredictions = loadPredictions;
+    loadPredictions = async function() {
+        await _origLoadPredictions();
+        // Fetch and display cost forecast section
+        const costData = await apiFetch('/api/cost-estimation');
+        if (costData) {
+            const section = document.getElementById('cost-forecast-section');
+            if (section) section.style.display = 'block';
+            updateElement('pred-cost-rate', '$' + costData.cost_per_gb_month + '/GB/mo');
+            updateElement('pred-cost-gb', costData.current_size_gb + ' GB');
+            if (costData.forecasts) {
+                if (costData.forecasts.weekly) updateElement('pred-cost-weekly', costData.forecasts.weekly.formatted);
+                if (costData.forecasts.monthly) updateElement('pred-cost-monthly', costData.forecasts.monthly.formatted);
+                if (costData.forecasts.yearly) updateElement('pred-cost-yearly', costData.forecasts.yearly.formatted);
+                if (costData.forecasts.five_year) updateElement('pred-cost-5year', costData.forecasts.five_year.formatted);
+            }
+        }
+    };
 </script>
 {% endblock %}

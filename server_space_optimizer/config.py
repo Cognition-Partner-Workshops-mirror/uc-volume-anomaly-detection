@@ -101,6 +101,27 @@ class AppConfig(BaseModel):
     # Web UI settings
     host: str = Field(default="0.0.0.0", description="Host to bind the web server")
     port: int = Field(default=8080, description="Port for the web server")
+    # System mount paths to exclude from scanning (never scan these)
+    excluded_mounts: list[str] = Field(
+        default=[
+            "/var", "/opt", "/home", "/optware", "/tmp",
+            "/etc", "/boot", "/proc", "/sys", "/dev", "/run",
+        ],
+        description=(
+            "System mount paths to exclude from scanning. "
+            "Only user-defined data mounts will be scanned."
+        ),
+    )
+    # Cost estimation: dollars per GB per month
+    cost_per_gb_month: float = Field(
+        default=0.023,
+        description="Storage cost in dollars per GB per month"
+    )
+    # Secret key for session cookies (auth)
+    secret_key: str = Field(
+        default="space-optimizer-secret-key-change-in-production",
+        description="Secret key for session management"
+    )
 
 
 def load_config(config_path: Optional[str] = None) -> AppConfig:
