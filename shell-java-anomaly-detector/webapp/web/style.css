@@ -1,0 +1,236 @@
+/*
+ * Volume Anomaly Detection Dashboard — Styles
+ *
+ * Professional gradient-driven design matching the Python dashboard.
+ * Ported from: server_space_optimizer/static/css/styles.css
+ * Built on Bootstrap 5 with custom overrides.
+ */
+
+/* ---- CSS Variables for consistent theming ---- */
+:root {
+    --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --gradient-success: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+    --gradient-info: linear-gradient(135deg, #2193b0 0%, #6dd5ed 100%);
+    --gradient-warning: linear-gradient(135deg, #f2994a 0%, #f2c94c 100%);
+    --gradient-danger: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+    --gradient-navbar: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    --shadow-soft: 0 4px 15px rgba(0, 0, 0, 0.08);
+    --shadow-medium: 0 8px 25px rgba(0, 0, 0, 0.12);
+    --border-radius-lg: 14px;
+    --border-radius-md: 10px;
+    --transition-base: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+/* ---- Overall page layout ---- */
+body {
+    background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f2 100%);
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    min-height: 100vh;
+    color: #2c3e50;
+}
+
+/* ---- Navigation bar with gradient ---- */
+.navbar {
+    background: var(--gradient-navbar) !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    padding: 0.6rem 1rem;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.05);
+}
+
+.navbar-brand {
+    font-weight: 700;
+    font-size: 1.3rem;
+    letter-spacing: 0.5px;
+    background: linear-gradient(90deg, #6dd5ed, #38ef7d);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.navbar-brand i {
+    -webkit-text-fill-color: #6dd5ed;
+}
+
+.navbar .nav-link {
+    color: rgba(255, 255, 255, 0.75) !important;
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    transition: var(--transition-base);
+    margin: 0 2px;
+    cursor: pointer;
+}
+
+.navbar .nav-link:hover {
+    color: #fff !important;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.navbar .nav-link.active {
+    color: #fff !important;
+    background: rgba(109, 213, 237, 0.2);
+    border-bottom: 2px solid #6dd5ed;
+}
+
+/* ---- Page header ---- */
+.page-header {
+    margin-bottom: 1.5rem;
+}
+.page-header h3 {
+    font-weight: 700;
+    color: #2c3e50;
+}
+.page-header p {
+    color: #7f8c8d;
+    margin-bottom: 0;
+}
+
+/* ---- Summary cards (gradient backgrounds with hover effects) ---- */
+.summary-card {
+    border: none;
+    border-radius: var(--border-radius-lg);
+    transition: var(--transition-base);
+    overflow: hidden;
+    position: relative;
+}
+
+.summary-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(255, 255, 255, 0.1);
+    opacity: 0;
+    transition: var(--transition-base);
+}
+
+.summary-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-medium);
+}
+
+.summary-card:hover::before {
+    opacity: 1;
+}
+
+/* ---- Cards ---- */
+.card {
+    border: none;
+    border-radius: var(--border-radius-md);
+    box-shadow: var(--shadow-soft);
+    transition: var(--transition-base);
+}
+
+.card:hover {
+    box-shadow: var(--shadow-medium);
+}
+
+.card-header {
+    background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+    color: white;
+    font-weight: 600;
+    border-radius: var(--border-radius-md) var(--border-radius-md) 0 0 !important;
+    padding: 0.75rem 1.25rem;
+}
+
+/* ---- Tables ---- */
+.table {
+    margin-bottom: 0;
+}
+
+.table thead th {
+    background: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+    font-weight: 600;
+    color: #2c3e50;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.table tbody tr:hover {
+    background-color: rgba(102, 126, 234, 0.05);
+}
+
+/* ---- Severity badges ---- */
+.badge-critical {
+    background: var(--gradient-danger);
+    color: white;
+    padding: 0.35em 0.7em;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.badge-high {
+    background: linear-gradient(135deg, #e74c3c, #f39c12);
+    color: white;
+    padding: 0.35em 0.7em;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.badge-medium {
+    background: var(--gradient-warning);
+    color: white;
+    padding: 0.35em 0.7em;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.badge-low {
+    background: var(--gradient-info);
+    color: white;
+    padding: 0.35em 0.7em;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+/* ---- Type badges ---- */
+.badge-spike {
+    background: #e74c3c;
+    color: white;
+    padding: 0.3em 0.6em;
+    border-radius: 4px;
+    font-size: 0.8rem;
+}
+
+.badge-drop {
+    background: #3498db;
+    color: white;
+    padding: 0.3em 0.6em;
+    border-radius: 4px;
+    font-size: 0.8rem;
+}
+
+.badge-latency {
+    background: #9b59b6;
+    color: white;
+    padding: 0.3em 0.6em;
+    border-radius: 4px;
+    font-size: 0.8rem;
+}
+
+/* ---- Report section ---- */
+#report-summary {
+    white-space: pre-line;
+    font-size: 1.05rem;
+    line-height: 1.8;
+}
+
+#report-actions li {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+#report-actions li:last-child {
+    border-bottom: none;
+}
+
+/* ---- Responsive adjustments ---- */
+@media (max-width: 768px) {
+    .navbar-brand {
+        font-size: 1rem;
+    }
+    .card-title {
+        font-size: 1.5rem;
+    }
+}
