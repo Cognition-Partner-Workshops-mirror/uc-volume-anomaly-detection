@@ -18,12 +18,15 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from server_space_optimizer.models.database import (
+    AlertLog,
     AppSettings,
     FileMetadata,
     ScanResult,
     SpaceSnapshot,
+    SubAppCapacityPlan,
     SubAppConfigDB,
     get_session,
+    init_database,
 )
 from server_space_optimizer.models.schemas import (
     DashboardSummary,
@@ -219,6 +222,7 @@ def get_purge_report(
     server_name: str,
     sub_app_name: Optional[str] = Query(None),
     threshold_days: Optional[int] = Query(None),
+    limit: int = Query(50, description="Max candidates to return, default top 50"),
     db: Session = Depends(get_db),
 ):
     """
@@ -226,15 +230,18 @@ def get_purge_report(
 
     Returns files eligible for cleanup based on age thresholds,
     providing a holistic view of old files that can be safely purged.
+    Supports limit parameter to cap the number of candidates shown
+    (default 50), with full CSV export available on the frontend.
     """
     analyzer = PurgeAnalyzer(db)
 
     if threshold_days is not None:
-        # Single threshold report
+        # Single threshold report with configurable limit
         report = analyzer.analyze_purge_candidates(
             server_name=server_name,
             sub_app_name=sub_app_name,
             threshold_days=threshold_days,
+            limit=limit,
         )
         return report
     else:
@@ -907,7 +914,9 @@ def get_cost_estimation(
 
     return {
         "cost_per_gb_month": cost_rate,
+        "current_size_bytes": size_result,
         "current_size_gb": round(current_gb, 2),
+        "current_size_human": format_size(size_result),
         "current_monthly_cost": round(monthly_cost, 2),
         "current_monthly_cost_formatted": f"${monthly_cost:,.2f}",
         "forecasts": cost_forecasts,
@@ -1015,3 +1024,433 @@ def update_excluded_mounts(
 
     db.commit()
     return {"status": "updated", "excluded_mounts": update.value.split(",")}
+
+
+# ========================================================================
+# Server & Sub-App Lookup API — for dropdown population in Settings page
+# ========================================================================
+
+@router.get("/config/servers")
+def list_known_servers(db: Session = Depends(get_db)):
+    """
+    Return distinct server names from scan results and sub-app configs.
+
+    Used by the Settings page to populate server name dropdowns so users
+    can select from already-configured servers instead of typing manually.
+    """
+    # Gather server names from both scan_results and sub_app_configs tables
+    scan_servers = db.query(ScanResult.server_name).distinct().all()
+    config_servers = db.query(SubAppConfigDB.server_name).distinct().all()
+
+    # Merge into a unique sorted list
+    all_servers = sorted(set(
+        row[0] for row in scan_servers + config_servers if row[0]
+    ))
+    return {"servers": all_servers}
+
+
+@router.get("/config/sub-app-names")
+def list_known_sub_apps(
+    server_name: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Return distinct sub-app names, optionally filtered by server.
+
+    Used by Settings and Purge pages to populate sub-app dropdowns
+    so users can pick from existing sub-apps instead of typing.
+    """
+    query = db.query(SubAppConfigDB.sub_app_name).distinct()
+    if server_name:
+        query = query.filter(SubAppConfigDB.server_name == server_name)
+    config_names = query.all()
+
+    # Also pull from scan_results for sub-apps not yet in configs
+    scan_query = db.query(ScanResult.sub_app_name).distinct()
+    if server_name:
+        scan_query = scan_query.filter(ScanResult.server_name == server_name)
+    scan_names = scan_query.all()
+
+    all_names = sorted(set(
+        row[0] for row in config_names + scan_names if row[0]
+    ))
+    return {"sub_apps": all_names}
+
+
+# ========================================================================
+# Sub-App Capacity Planning API
+# Each sub-app team defines estimated daily consumption, growth rate,
+# purge schedule, monthly allocation, and contact email for 80% alerts.
+# ========================================================================
+
+class CapacityPlanCreate(BaseModel):
+    """Request body for creating/updating a capacity plan."""
+    server_name: str
+    sub_app_name: str
+    daily_consumption_gb: float = 0.0
+    growth_rate_pct: float = 0.0
+    purge_schedule_json: str = "[]"
+    monthly_allocation_gb: float = 0.0
+    alert_threshold_pct: float = 80.0
+    contact_email: str = ""
+
+
+@router.get("/capacity-plans")
+def list_capacity_plans(
+    server_name: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """
+    List all sub-app capacity plans, optionally filtered by server.
+
+    Returns each plan with its estimated consumption, growth rate,
+    purge schedule, monthly allocation, and contact info.
+    """
+    query = db.query(SubAppCapacityPlan)
+    if server_name:
+        query = query.filter(SubAppCapacityPlan.server_name == server_name)
+
+    plans = query.order_by(
+        SubAppCapacityPlan.server_name,
+        SubAppCapacityPlan.sub_app_name,
+    ).all()
+
+    result = []
+    for p in plans:
+        result.append({
+            "id": p.id,
+            "server_name": p.server_name,
+            "sub_app_name": p.sub_app_name,
+            "daily_consumption_gb": p.daily_consumption_gb,
+            "growth_rate_pct": p.growth_rate_pct,
+            "purge_schedule_json": p.purge_schedule_json,
+            "monthly_allocation_gb": p.monthly_allocation_gb,
+            "alert_threshold_pct": p.alert_threshold_pct,
+            "contact_email": p.contact_email,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+            "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+        })
+    return {"plans": result}
+
+
+@router.post("/capacity-plans")
+def create_capacity_plan(
+    plan: CapacityPlanCreate,
+    db: Session = Depends(get_db),
+):
+    """
+    Create a new capacity plan for a sub-app.
+
+    Defines the team's estimated daily consumption, growth rate,
+    purge schedule, monthly allocation, and alert contact email.
+    """
+    new_plan = SubAppCapacityPlan(
+        server_name=plan.server_name,
+        sub_app_name=plan.sub_app_name,
+        daily_consumption_gb=plan.daily_consumption_gb,
+        growth_rate_pct=plan.growth_rate_pct,
+        purge_schedule_json=plan.purge_schedule_json,
+        monthly_allocation_gb=plan.monthly_allocation_gb,
+        alert_threshold_pct=plan.alert_threshold_pct,
+        contact_email=plan.contact_email,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    db.add(new_plan)
+    db.commit()
+    db.refresh(new_plan)
+    return {"message": "Capacity plan created", "id": new_plan.id}
+
+
+@router.put("/capacity-plans/{plan_id}")
+def update_capacity_plan(
+    plan_id: int,
+    plan: CapacityPlanCreate,
+    db: Session = Depends(get_db),
+):
+    """
+    Update an existing capacity plan by ID.
+
+    Allows teams to adjust their consumption estimates, purge schedule,
+    or monthly allocation as requirements change.
+    """
+    existing = db.query(SubAppCapacityPlan).filter(
+        SubAppCapacityPlan.id == plan_id
+    ).first()
+    if not existing:
+        return {"error": "Capacity plan not found"}, 404
+
+    existing.server_name = plan.server_name
+    existing.sub_app_name = plan.sub_app_name
+    existing.daily_consumption_gb = plan.daily_consumption_gb
+    existing.growth_rate_pct = plan.growth_rate_pct
+    existing.purge_schedule_json = plan.purge_schedule_json
+    existing.monthly_allocation_gb = plan.monthly_allocation_gb
+    existing.alert_threshold_pct = plan.alert_threshold_pct
+    existing.contact_email = plan.contact_email
+    existing.updated_at = datetime.utcnow()
+    db.commit()
+    return {"message": "Capacity plan updated", "id": plan_id}
+
+
+@router.delete("/capacity-plans/{plan_id}")
+def delete_capacity_plan(
+    plan_id: int,
+    db: Session = Depends(get_db),
+):
+    """Delete a capacity plan by ID."""
+    deleted = db.query(SubAppCapacityPlan).filter(
+        SubAppCapacityPlan.id == plan_id
+    ).delete()
+    db.commit()
+    return {"message": "Deleted", "count": deleted}
+
+
+@router.get("/capacity-plans/status")
+def get_capacity_status(
+    server_name: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Check allocation usage status for all sub-apps with capacity plans.
+
+    Compares current usage against monthly allocation and returns
+    usage percentage. Flags sub-apps that have breached their
+    alert_threshold_pct (default 80%).
+    """
+    query = db.query(SubAppCapacityPlan)
+    if server_name:
+        query = query.filter(SubAppCapacityPlan.server_name == server_name)
+    plans = query.all()
+
+    statuses = []
+    for plan in plans:
+        # Get latest scan result for this server+sub-app to find current usage
+        latest_scan = (
+            db.query(ScanResult)
+            .filter(
+                ScanResult.server_name == plan.server_name,
+                ScanResult.sub_app_name == plan.sub_app_name,
+            )
+            .order_by(ScanResult.scan_timestamp.desc())
+            .first()
+        )
+        current_bytes = latest_scan.total_size_bytes if latest_scan else 0
+        current_gb = current_bytes / (1024 ** 3)
+        usage_pct = (
+            (current_gb / plan.monthly_allocation_gb * 100)
+            if plan.monthly_allocation_gb > 0 else 0
+        )
+        # Check if usage has breached the alert threshold
+        breached = usage_pct >= plan.alert_threshold_pct
+
+        statuses.append({
+            "plan_id": plan.id,
+            "server_name": plan.server_name,
+            "sub_app_name": plan.sub_app_name,
+            "monthly_allocation_gb": plan.monthly_allocation_gb,
+            "current_usage_gb": round(current_gb, 2),
+            "usage_pct": round(usage_pct, 1),
+            "alert_threshold_pct": plan.alert_threshold_pct,
+            "breached": breached,
+            "contact_email": plan.contact_email,
+            "daily_consumption_gb": plan.daily_consumption_gb,
+            "growth_rate_pct": plan.growth_rate_pct,
+        })
+
+    return {"statuses": statuses}
+
+
+@router.post("/capacity-plans/check-alerts")
+def check_and_send_alerts(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """
+    Check all capacity plans for threshold breaches and queue alert emails.
+
+    Compares current usage against each plan's monthly_allocation_gb.
+    If usage >= alert_threshold_pct (default 80%), queues an email
+    to the plan's contact_email. Avoids duplicate alerts by checking
+    the alert_logs table — only sends if no alert was sent in the last 24h.
+    """
+    import json
+
+    plans = db.query(SubAppCapacityPlan).all()
+    alerts_queued = 0
+
+    for plan in plans:
+        if not plan.contact_email or plan.monthly_allocation_gb <= 0:
+            continue
+
+        # Get current usage from latest scan result
+        latest_scan = (
+            db.query(ScanResult)
+            .filter(
+                ScanResult.server_name == plan.server_name,
+                ScanResult.sub_app_name == plan.sub_app_name,
+            )
+            .order_by(ScanResult.scan_timestamp.desc())
+            .first()
+        )
+        if not latest_scan:
+            continue
+
+        current_gb = latest_scan.total_size_bytes / (1024 ** 3)
+        usage_pct = current_gb / plan.monthly_allocation_gb * 100
+
+        if usage_pct < plan.alert_threshold_pct:
+            continue
+
+        # Check if we already sent an alert in the last 24 hours
+        from datetime import timedelta
+        recent_alert = (
+            db.query(AlertLog)
+            .filter(
+                AlertLog.server_name == plan.server_name,
+                AlertLog.sub_app_name == plan.sub_app_name,
+                AlertLog.alert_type == "threshold_80",
+                AlertLog.created_at >= datetime.utcnow() - timedelta(hours=24),
+            )
+            .first()
+        )
+        if recent_alert:
+            continue
+
+        # Queue the alert email in background
+        background_tasks.add_task(
+            _send_threshold_alert,
+            db_path=os.environ.get("DB_PATH", "space_optimizer.db"),
+            server_name=plan.server_name,
+            sub_app_name=plan.sub_app_name,
+            contact_email=plan.contact_email,
+            current_gb=round(current_gb, 2),
+            allocation_gb=plan.monthly_allocation_gb,
+            usage_pct=round(usage_pct, 1),
+        )
+        alerts_queued += 1
+
+    return {"message": f"Alert check complete, {alerts_queued} alerts queued"}
+
+
+def _send_threshold_alert(
+    db_path: str,
+    server_name: str,
+    sub_app_name: str,
+    contact_email: str,
+    current_gb: float,
+    allocation_gb: float,
+    usage_pct: float,
+):
+    """
+    Send an allocation threshold alert email and log the result.
+
+    Uses Python's built-in smtplib for email delivery. Falls back
+    to logging the alert if SMTP is not configured. Logs the alert
+    in the alert_logs table regardless of delivery status.
+    """
+    import smtplib
+    from email.mime.text import MIMEText
+
+    # Build the alert email content
+    subject = (
+        f"[ALERT] Storage threshold reached: {sub_app_name} "
+        f"on {server_name} ({usage_pct}%)"
+    )
+    body = (
+        f"Storage Alert - Volume Anomaly Detection & Storage Forecaster\n"
+        f"{'=' * 60}\n\n"
+        f"Sub-Application: {sub_app_name}\n"
+        f"Server: {server_name}\n"
+        f"Current Usage: {current_gb} GB\n"
+        f"Monthly Allocation: {allocation_gb} GB\n"
+        f"Usage: {usage_pct}%\n\n"
+        f"The storage usage for '{sub_app_name}' has reached "
+        f"{usage_pct}% of its monthly allocation ({allocation_gb} GB).\n\n"
+        f"Please review the storage consumption and consider:\n"
+        f"  - Running a purge cycle for old/stale files\n"
+        f"  - Requesting an allocation increase\n"
+        f"  - Reviewing the purge schedule configuration\n\n"
+        f"This is an automated alert from VADSF.\n"
+    )
+
+    sent_success = 0
+    try:
+        # Attempt SMTP delivery using environment-configured server
+        smtp_host = os.environ.get("SMTP_HOST", "localhost")
+        smtp_port = int(os.environ.get("SMTP_PORT", "25"))
+        smtp_from = os.environ.get("SMTP_FROM", "vadsf-alerts@localhost")
+
+        msg = MIMEText(body)
+        msg["Subject"] = subject
+        msg["From"] = smtp_from
+        msg["To"] = contact_email
+
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
+            server.sendmail(smtp_from, [contact_email], msg.as_string())
+            sent_success = 1
+            logger.info("Alert email sent to %s for %s/%s",
+                        contact_email, server_name, sub_app_name)
+    except Exception as e:
+        # Log the failure but don't crash — alerts are best-effort
+        logger.warning(
+            "Failed to send alert email to %s: %s (alert logged anyway)",
+            contact_email, e,
+        )
+
+    # Log the alert in the database regardless of send status
+    try:
+        session_factory = init_database(db_path)
+        db = session_factory()
+        alert_log = AlertLog(
+            server_name=server_name,
+            sub_app_name=sub_app_name,
+            alert_type="threshold_80",
+            current_usage_gb=current_gb,
+            allocation_gb=allocation_gb,
+            usage_pct=usage_pct,
+            sent_to_email=contact_email,
+            sent_success=sent_success,
+            created_at=datetime.utcnow(),
+        )
+        db.add(alert_log)
+        db.commit()
+        db.close()
+    except Exception as e:
+        logger.error("Failed to log alert: %s", e)
+
+
+@router.get("/alert-logs")
+def get_alert_logs(
+    server_name: Optional[str] = Query(None),
+    sub_app_name: Optional[str] = Query(None),
+    limit: int = Query(50, description="Max logs to return"),
+    db: Session = Depends(get_db),
+):
+    """
+    Retrieve alert log history for auditing threshold notifications.
+    """
+    query = db.query(AlertLog)
+    if server_name:
+        query = query.filter(AlertLog.server_name == server_name)
+    if sub_app_name:
+        query = query.filter(AlertLog.sub_app_name == sub_app_name)
+
+    logs = query.order_by(AlertLog.created_at.desc()).limit(limit).all()
+    return {
+        "logs": [
+            {
+                "id": log.id,
+                "server_name": log.server_name,
+                "sub_app_name": log.sub_app_name,
+                "alert_type": log.alert_type,
+                "current_usage_gb": log.current_usage_gb,
+                "allocation_gb": log.allocation_gb,
+                "usage_pct": log.usage_pct,
+                "sent_to_email": log.sent_to_email,
+                "sent_success": bool(log.sent_success),
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+            }
+            for log in logs
+        ]
+    }

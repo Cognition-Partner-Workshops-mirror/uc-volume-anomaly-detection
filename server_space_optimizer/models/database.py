@@ -146,6 +146,64 @@ class AppSettings(Base):
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 
+class SubAppCapacityPlan(Base):
+    """
+    Capacity planning configuration per sub-app.
+
+    Each team defines their estimated daily consumption, growth rate,
+    purge schedule, and monthly allocation. When usage reaches the
+    alert_threshold_pct (default 80%), an email notification is triggered.
+
+    Example: data_acquisition team processes 10GB/day, grows 10%/day,
+    purges 50% after 7 days and 50% after 30 days, with 500GB/month allocation.
+    """
+    __tablename__ = "sub_app_capacity_plans"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    server_name = Column(String(255), nullable=False, index=True)
+    sub_app_name = Column(String(255), nullable=False, index=True)
+    # Estimated daily source file processing volume in GB
+    daily_consumption_gb = Column(Float, nullable=False, default=0.0)
+    # Daily growth rate as a percentage (e.g., 10 means 10% growth/day)
+    growth_rate_pct = Column(Float, nullable=False, default=0.0)
+    # Purge schedule as JSON string: e.g. [{"pct":50,"after_days":7},{"pct":50,"after_days":30}]
+    purge_schedule_json = Column(Text, nullable=False, default="[]")
+    # Monthly storage allocation in GB for this sub-app
+    monthly_allocation_gb = Column(Float, nullable=False, default=0.0)
+    # Alert threshold percentage (default 80%)
+    alert_threshold_pct = Column(Float, nullable=False, default=80.0)
+    # Contact email for threshold alerts
+    contact_email = Column(String(255), nullable=True, default="")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class AlertLog(Base):
+    """
+    Log of threshold alert emails sent to sub-app contacts.
+
+    Tracks when alerts were sent to avoid duplicate notifications.
+    """
+    __tablename__ = "alert_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    server_name = Column(String(255), nullable=False, index=True)
+    sub_app_name = Column(String(255), nullable=False, index=True)
+    # Type of alert: 'threshold_80' for allocation threshold breach
+    alert_type = Column(String(50), nullable=False, default="threshold_80")
+    # Current usage when alert was triggered (in GB)
+    current_usage_gb = Column(Float, nullable=False, default=0.0)
+    # Monthly allocation at alert time (in GB)
+    allocation_gb = Column(Float, nullable=False, default=0.0)
+    # Usage percentage at alert time
+    usage_pct = Column(Float, nullable=False, default=0.0)
+    # Email address the alert was sent to
+    sent_to_email = Column(String(255), nullable=True, default="")
+    # Whether the email was sent successfully
+    sent_success = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 def hash_password(password: str) -> str:
     """Hash a password using SHA-256."""
     return hashlib.sha256(password.encode("utf-8")).hexdigest()

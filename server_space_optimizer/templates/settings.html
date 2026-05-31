@@ -7,7 +7,70 @@
 <!-- Page header -->
 <div class="page-header">
     <h3><i class="bi bi-gear" style="color: #667eea;"></i> Configuration & Settings</h3>
-    <p>Manage sub-app configurations, mount paths, cost settings, and excluded mounts</p>
+    <p>Manage servers, sub-app configurations, capacity planning, mount paths, cost settings, and excluded mounts</p>
+</div>
+
+<!-- Add Server Section — allows adding new servers with dropdown for existing ones -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 style="background: linear-gradient(135deg, #2c3e50, #3498db); color: white;">
+                <span><i class="bi bi-hdd-network"></i> Server Management</span>
+                <button class="btn btn-sm btn-light" onclick="toggleAddServerForm()">
+                    <i class="bi bi-plus-circle"></i> Add Server
+                </button>
+            </div>
+            <div class="card-body">
+                <!-- Add server form (hidden by default) -->
+                <div id="server-add-form" class="border rounded p-3 mb-3" style="display: none; background: #f8f9fa;">
+                    <h6><i class="bi bi-plus-circle"></i> Add New Server Configuration</h6>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label for="new-server-name" class="form-label fw-semibold">Server Name</label>
+                            <!-- Dropdown with datalist for existing servers + free text input -->
+                            <input type="text" class="form-control" id="new-server-name"
+                                   list="existing-servers-list" placeholder="Type or select server name">
+                            <datalist id="existing-servers-list">
+                                <!-- Populated dynamically from API -->
+                            </datalist>
+                            <small class="text-muted">Select from existing or type a new server name</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="new-server-host" class="form-label fw-semibold">Server Host / IP</label>
+                            <input type="text" class="form-control" id="new-server-host" placeholder="e.g., 10.0.1.100">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="new-server-mount" class="form-label fw-semibold">NAS Mount Path</label>
+                            <input type="text" class="form-control" id="new-server-mount" placeholder="e.g., /mnt/nas">
+                        </div>
+                    </div>
+                    <div class="mt-3 text-end">
+                        <button class="btn btn-secondary me-2" onclick="toggleAddServerForm()">Cancel</button>
+                        <button class="btn btn-primary" onclick="addServerConfig()">
+                            <i class="bi bi-save"></i> Save Server
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Existing servers table -->
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Server Name</th>
+                                <th>Sub-Apps Count</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="servers-table-body">
+                            <tr><td colspan="3" class="text-center text-muted py-3">Loading servers...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Cost & Global Settings -->
@@ -65,18 +128,28 @@
                 </button>
             </div>
             <div class="card-body">
-                <!-- Add/Edit sub-app form (hidden by default) -->
+                <!-- Add/Edit sub-app form (hidden by default) — uses dropdowns for servers/sub-apps -->
                 <div id="subapp-form" class="border rounded p-3 mb-3" style="display: none; background: #f8f9fa;">
                     <h6 id="subapp-form-title"><i class="bi bi-plus-circle"></i> Add New Sub-App</h6>
                     <input type="hidden" id="subapp-edit-id" value="">
                     <div class="row g-3">
                         <div class="col-md-3">
                             <label for="subapp-server" class="form-label fw-semibold">Server Name</label>
-                            <input type="text" class="form-control" id="subapp-server" placeholder="e.g., prod-server-1">
+                            <!-- Dropdown with datalist for existing servers -->
+                            <input type="text" class="form-control" id="subapp-server"
+                                   list="subapp-servers-list" placeholder="Select or type server">
+                            <datalist id="subapp-servers-list">
+                                <!-- Populated from API -->
+                            </datalist>
                         </div>
                         <div class="col-md-3">
                             <label for="subapp-name" class="form-label fw-semibold">Sub-App Name</label>
-                            <input type="text" class="form-control" id="subapp-name" placeholder="e.g., billing">
+                            <!-- Dropdown with datalist for existing sub-apps -->
+                            <input type="text" class="form-control" id="subapp-name"
+                                   list="subapp-names-list" placeholder="Select or type sub-app">
+                            <datalist id="subapp-names-list">
+                                <!-- Populated from API -->
+                            </datalist>
                         </div>
                         <div class="col-md-3">
                             <label for="subapp-path" class="form-label fw-semibold">Mount Path / Folder</label>
@@ -132,6 +205,145 @@
     </div>
 </div>
 
+<!-- Capacity Planning Section — per-sub-app consumption, growth, purge schedule, allocation -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 style="background: linear-gradient(135deg, #e67e22, #f39c12); color: white;">
+                <span><i class="bi bi-bar-chart-steps"></i> Sub-App Capacity Planning</span>
+                <button class="btn btn-sm btn-light" onclick="showCapacityPlanForm()">
+                    <i class="bi bi-plus-circle"></i> Add Capacity Plan
+                </button>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    Define estimated daily consumption, growth rate, purge schedule, and monthly allocation per sub-app.
+                    When usage reaches the alert threshold, an email notification is sent to the configured contact.
+                </p>
+
+                <!-- Add/Edit capacity plan form (hidden by default) -->
+                <div id="capacity-plan-form" class="border rounded p-3 mb-3" style="display: none; background: #fff8f0;">
+                    <h6 id="capacity-plan-form-title"><i class="bi bi-plus-circle"></i> Add Capacity Plan</h6>
+                    <input type="hidden" id="capacity-plan-edit-id" value="">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label for="cap-server" class="form-label fw-semibold">Server Name</label>
+                            <input type="text" class="form-control" id="cap-server"
+                                   list="cap-servers-list" placeholder="Select server">
+                            <datalist id="cap-servers-list"></datalist>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="cap-subapp" class="form-label fw-semibold">Sub-App Name</label>
+                            <input type="text" class="form-control" id="cap-subapp"
+                                   list="cap-subapps-list" placeholder="Select sub-app">
+                            <datalist id="cap-subapps-list"></datalist>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="cap-daily-gb" class="form-label fw-semibold">Daily Consumption (GB)</label>
+                            <input type="number" class="form-control" id="cap-daily-gb" step="0.1" min="0" value="0" placeholder="e.g., 10">
+                            <small class="text-muted">Estimated daily file processing volume</small>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="cap-growth-pct" class="form-label fw-semibold">Growth Rate (%/day)</label>
+                            <input type="number" class="form-control" id="cap-growth-pct" step="0.1" min="0" value="0" placeholder="e.g., 10">
+                            <small class="text-muted">Daily growth rate percentage</small>
+                        </div>
+                    </div>
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Purge Schedule</label>
+                            <div id="purge-schedule-rows">
+                                <!-- Dynamic rows for purge rules: % to purge after N days -->
+                                <div class="input-group input-group-sm mb-1 purge-rule-row">
+                                    <span class="input-group-text">Purge</span>
+                                    <input type="number" class="form-control purge-pct" min="0" max="100" value="50" placeholder="%">
+                                    <span class="input-group-text">% after</span>
+                                    <input type="number" class="form-control purge-days" min="1" value="7" placeholder="days">
+                                    <span class="input-group-text">days</span>
+                                </div>
+                                <div class="input-group input-group-sm mb-1 purge-rule-row">
+                                    <span class="input-group-text">Purge</span>
+                                    <input type="number" class="form-control purge-pct" min="0" max="100" value="50" placeholder="%">
+                                    <span class="input-group-text">% after</span>
+                                    <input type="number" class="form-control purge-days" min="1" value="30" placeholder="days">
+                                    <span class="input-group-text">days</span>
+                                </div>
+                            </div>
+                            <button class="btn btn-sm btn-outline-secondary mt-1" onclick="addPurgeRuleRow()">
+                                <i class="bi bi-plus"></i> Add Purge Rule
+                            </button>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="cap-allocation-gb" class="form-label fw-semibold">Monthly Allocation (GB)</label>
+                            <input type="number" class="form-control" id="cap-allocation-gb" step="1" min="0" value="0" placeholder="e.g., 500">
+                            <small class="text-muted">Monthly storage budget for this team</small>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="cap-threshold-pct" class="form-label fw-semibold">Alert at (%)</label>
+                            <input type="number" class="form-control" id="cap-threshold-pct" step="1" min="0" max="100" value="80">
+                            <small class="text-muted">Default: 80%</small>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="cap-email" class="form-label fw-semibold">Contact Email</label>
+                            <input type="email" class="form-control" id="cap-email" placeholder="team@company.com">
+                            <small class="text-muted">Alert notifications sent here</small>
+                        </div>
+                    </div>
+                    <div class="mt-3 text-end">
+                        <button class="btn btn-secondary me-2" onclick="cancelCapacityPlanForm()">Cancel</button>
+                        <button class="btn btn-warning text-white" onclick="saveCapacityPlan()">
+                            <i class="bi bi-save"></i> Save Plan
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Capacity plans table -->
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover" id="capacity-plans-table">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Server</th>
+                                <th>Sub-App</th>
+                                <th>Daily (GB)</th>
+                                <th>Growth (%/day)</th>
+                                <th>Purge Schedule</th>
+                                <th>Allocation (GB/mo)</th>
+                                <th>Alert At</th>
+                                <th>Contact</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="capacity-plans-body">
+                            <tr><td colspan="9" class="text-center text-muted py-3">Loading capacity plans...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Allocation Status — shows current usage vs allocation with threshold warnings -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 style="background: linear-gradient(135deg, #c0392b, #e74c3c); color: white;">
+                <span><i class="bi bi-speedometer2"></i> Allocation Usage Status</span>
+                <button class="btn btn-sm btn-light" onclick="checkAlerts()">
+                    <i class="bi bi-bell"></i> Check & Send Alerts
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="allocation-status-cards" class="row">
+                    <div class="col-12 text-center text-muted py-3">Loading allocation status...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Cost Estimation Preview -->
 <div class="row mb-4">
     <div class="col-12">
@@ -175,11 +387,17 @@
 
 {% block extra_js %}
 <script>
-    // Load settings and sub-app configs on page load
+    // Load settings, sub-app configs, capacity plans, servers, and dropdowns on page load
     document.addEventListener('DOMContentLoaded', function() {
         loadSettings();
         loadSubAppConfigs();
         refreshCostEstimation();
+        loadServersList();
+        populateServerDropdowns_settings();
+        populateSubAppDropdowns_settings();
+        // Load capacity planning data
+        loadCapacityPlans();
+        loadAllocationStatus();
     });
 
     // Load current settings from API
@@ -235,6 +453,138 @@
         }
     }
 
+    /**
+     * Load the list of known servers and display in the servers table.
+     * Also populates the server datalist for the "Add Server" form.
+     */
+    async function loadServersList() {
+        const data = await apiFetch('/api/config/servers');
+        if (!data) return;
+
+        // Populate the servers table
+        const tbody = document.getElementById('servers-table-body');
+        if (tbody) {
+            if (!data.servers || data.servers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">No servers configured. Click "Add Server" to add one.</td></tr>';
+            } else {
+                // Count sub-apps per server from sub-app configs
+                const configData = await apiFetch('/api/config/sub-apps');
+                const subAppCounts = {};
+                if (configData && configData.configs) {
+                    configData.configs.forEach(c => {
+                        subAppCounts[c.server_name] = (subAppCounts[c.server_name] || 0) + 1;
+                    });
+                }
+
+                let html = '';
+                data.servers.forEach(server => {
+                    const count = subAppCounts[server] || 0;
+                    html += `
+                        <tr>
+                            <td><strong><i class="bi bi-hdd-network"></i> ${server}</strong></td>
+                            <td><span class="badge bg-info">${count}</span> sub-apps</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" onclick="scrollToSubApps('${server}')">
+                                    <i class="bi bi-gear"></i> View Sub-Apps
+                                </button>
+                            </td>
+                        </tr>`;
+                });
+                tbody.innerHTML = html;
+            }
+        }
+    }
+
+    /** Scroll to sub-app section */
+    function scrollToSubApps(serverName) {
+        document.getElementById('subapp-config-table').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    /**
+     * Populate server name datalists from the API for autocomplete dropdowns.
+     * This lets users select from existing servers when adding configs.
+     */
+    async function populateServerDropdowns_settings() {
+        const data = await apiFetch('/api/config/servers');
+        if (!data || !data.servers) return;
+
+        // Fill both datalists: one for the server form, one for the sub-app form
+        const lists = ['existing-servers-list', 'subapp-servers-list'];
+        lists.forEach(listId => {
+            const dl = document.getElementById(listId);
+            if (!dl) return;
+            dl.innerHTML = '';
+            data.servers.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s;
+                dl.appendChild(opt);
+            });
+        });
+    }
+
+    /**
+     * Populate sub-app name datalist from the API for autocomplete dropdown.
+     * This lets users select from existing sub-apps when adding new configs.
+     */
+    async function populateSubAppDropdowns_settings() {
+        const data = await apiFetch('/api/config/sub-app-names');
+        if (!data || !data.sub_apps) return;
+
+        const dl = document.getElementById('subapp-names-list');
+        if (!dl) return;
+        dl.innerHTML = '';
+        data.sub_apps.forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            dl.appendChild(opt);
+        });
+    }
+
+    /** Toggle the "Add Server" form visibility */
+    function toggleAddServerForm() {
+        const form = document.getElementById('server-add-form');
+        if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    }
+
+    /**
+     * Add a new server by creating a sub-app config entry for it.
+     * The server is registered through sub-app configs table.
+     */
+    async function addServerConfig() {
+        const name = document.getElementById('new-server-name').value.trim();
+        const host = document.getElementById('new-server-host').value.trim();
+        const mount = document.getElementById('new-server-mount').value.trim();
+
+        if (!name) { alert('Server name is required'); return; }
+
+        // Create a default sub-app config entry to register the server
+        const payload = {
+            server_name: name,
+            sub_app_name: 'default',
+            path: mount || '/mnt/nas',
+            patterns: '',
+            is_dedicated_mount: false,
+        };
+
+        const response = await fetch('/api/config/sub-apps', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        if (response.ok) {
+            toggleAddServerForm();
+            // Clear form fields
+            document.getElementById('new-server-name').value = '';
+            document.getElementById('new-server-host').value = '';
+            document.getElementById('new-server-mount').value = '';
+            // Reload servers and sub-app lists
+            loadServersList();
+            loadSubAppConfigs();
+            populateServerDropdowns_settings();
+        }
+    }
+
     // Load sub-app configurations from the DB
     async function loadSubAppConfigs() {
         const data = await apiFetch('/api/config/sub-apps');
@@ -268,7 +618,7 @@
         tbody.innerHTML = html;
     }
 
-    // Show the add sub-app form
+    // Show the add sub-app form and refresh dropdowns
     function showAddSubAppForm() {
         document.getElementById('subapp-form').style.display = 'block';
         document.getElementById('subapp-form-title').innerHTML = '<i class="bi bi-plus-circle"></i> Add New Sub-App';
@@ -278,6 +628,9 @@
         document.getElementById('subapp-path').value = '';
         document.getElementById('subapp-patterns').value = '';
         document.getElementById('subapp-dedicated').checked = false;
+        // Refresh dropdowns when form is opened so they have latest data
+        populateServerDropdowns_settings();
+        populateSubAppDropdowns_settings();
     }
 
     // Hide the form
@@ -295,6 +648,9 @@
         document.getElementById('subapp-path').value = path;
         document.getElementById('subapp-patterns').value = patterns;
         document.getElementById('subapp-dedicated').checked = dedicated;
+        // Refresh dropdowns for editing context
+        populateServerDropdowns_settings();
+        populateSubAppDropdowns_settings();
     }
 
     // Save (create or update) sub-app config
@@ -324,6 +680,9 @@
         if (response.ok) {
             cancelSubAppForm();
             loadSubAppConfigs();
+            loadServersList();
+            populateServerDropdowns_settings();
+            populateSubAppDropdowns_settings();
         }
     }
 
@@ -334,6 +693,7 @@
         const response = await fetch('/api/config/sub-apps/' + id, { method: 'DELETE' });
         if (response.ok) {
             loadSubAppConfigs();
+            loadServersList();
         }
     }
 
@@ -349,6 +709,306 @@
         if (data.forecasts) {
             if (data.forecasts.yearly) updateElement('cost-display-yearly', data.forecasts.yearly.formatted);
             if (data.forecasts.five_year) updateElement('cost-display-5year', data.forecasts.five_year.formatted);
+        }
+    }
+
+    // ===================================================================
+    // Capacity Planning Functions
+    // Manages per-sub-app consumption estimates, purge schedules,
+    // monthly allocations, and threshold alert configuration.
+    // ===================================================================
+
+    /**
+     * Load all capacity plans from the API and render in the table.
+     */
+    async function loadCapacityPlans() {
+        const data = await apiFetch('/api/capacity-plans');
+        const tbody = document.getElementById('capacity-plans-body');
+        if (!tbody) return;
+
+        if (!data || !data.plans || data.plans.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">No capacity plans configured. Click "Add Capacity Plan" to create one.</td></tr>';
+            return;
+        }
+
+        let html = '';
+        for (const p of data.plans) {
+            // Parse purge schedule JSON for display
+            let purgeDisplay = '-';
+            try {
+                const rules = JSON.parse(p.purge_schedule_json || '[]');
+                if (rules.length > 0) {
+                    purgeDisplay = rules.map(r => `${r.pct}% after ${r.after_days}d`).join(', ');
+                }
+            } catch (e) { /* invalid JSON, show raw */ purgeDisplay = p.purge_schedule_json; }
+
+            html += '<tr>'
+                + '<td><strong>' + p.server_name + '</strong></td>'
+                + '<td>' + p.sub_app_name + '</td>'
+                + '<td>' + p.daily_consumption_gb + ' GB</td>'
+                + '<td>' + p.growth_rate_pct + '%</td>'
+                + '<td><small>' + purgeDisplay + '</small></td>'
+                + '<td><strong>' + p.monthly_allocation_gb + ' GB</strong></td>'
+                + '<td>' + p.alert_threshold_pct + '%</td>'
+                + '<td><small>' + (p.contact_email || '-') + '</small></td>'
+                + '<td>'
+                + '<button class="btn btn-sm btn-outline-primary me-1" onclick=\'editCapacityPlan(' + JSON.stringify(p) + ')\'><i class="bi bi-pencil"></i></button>'
+                + '<button class="btn btn-sm btn-outline-danger" onclick="deleteCapacityPlan(' + p.id + ')"><i class="bi bi-trash"></i></button>'
+                + '</td>'
+                + '</tr>';
+        }
+        tbody.innerHTML = html;
+    }
+
+    /**
+     * Show the capacity plan add form and populate dropdowns.
+     */
+    function showCapacityPlanForm() {
+        document.getElementById('capacity-plan-form').style.display = 'block';
+        document.getElementById('capacity-plan-form-title').innerHTML = '<i class="bi bi-plus-circle"></i> Add Capacity Plan';
+        document.getElementById('capacity-plan-edit-id').value = '';
+        document.getElementById('cap-server').value = '';
+        document.getElementById('cap-subapp').value = '';
+        document.getElementById('cap-daily-gb').value = '0';
+        document.getElementById('cap-growth-pct').value = '0';
+        document.getElementById('cap-allocation-gb').value = '0';
+        document.getElementById('cap-threshold-pct').value = '80';
+        document.getElementById('cap-email').value = '';
+        // Reset purge schedule to default 2 rules
+        resetPurgeRules([{pct: 50, after_days: 7}, {pct: 50, after_days: 30}]);
+        // Populate dropdowns for servers and sub-apps
+        populateCapacityDropdowns();
+    }
+
+    /** Hide the capacity plan form */
+    function cancelCapacityPlanForm() {
+        document.getElementById('capacity-plan-form').style.display = 'none';
+    }
+
+    /**
+     * Populate server and sub-app dropdowns in the capacity plan form.
+     */
+    async function populateCapacityDropdowns() {
+        const serverData = await apiFetch('/api/config/servers');
+        const subAppData = await apiFetch('/api/config/sub-app-names');
+
+        const serverList = document.getElementById('cap-servers-list');
+        const subAppList = document.getElementById('cap-subapps-list');
+
+        if (serverList && serverData && serverData.servers) {
+            serverList.innerHTML = '';
+            serverData.servers.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s;
+                serverList.appendChild(opt);
+            });
+        }
+        if (subAppList && subAppData && subAppData.sub_apps) {
+            subAppList.innerHTML = '';
+            subAppData.sub_apps.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s;
+                subAppList.appendChild(opt);
+            });
+        }
+    }
+
+    /**
+     * Add a new dynamic purge rule row to the form.
+     */
+    function addPurgeRuleRow() {
+        const container = document.getElementById('purge-schedule-rows');
+        const row = document.createElement('div');
+        row.className = 'input-group input-group-sm mb-1 purge-rule-row';
+        row.innerHTML = `
+            <span class="input-group-text">Purge</span>
+            <input type="number" class="form-control purge-pct" min="0" max="100" value="0" placeholder="%">
+            <span class="input-group-text">% after</span>
+            <input type="number" class="form-control purge-days" min="1" value="7" placeholder="days">
+            <span class="input-group-text">days</span>
+            <button class="btn btn-outline-danger btn-sm" onclick="this.parentElement.remove()"><i class="bi bi-x"></i></button>
+        `;
+        container.appendChild(row);
+    }
+
+    /**
+     * Reset purge schedule rows to given rules array.
+     */
+    function resetPurgeRules(rules) {
+        const container = document.getElementById('purge-schedule-rows');
+        container.innerHTML = '';
+        rules.forEach(rule => {
+            const row = document.createElement('div');
+            row.className = 'input-group input-group-sm mb-1 purge-rule-row';
+            row.innerHTML = `
+                <span class="input-group-text">Purge</span>
+                <input type="number" class="form-control purge-pct" min="0" max="100" value="${rule.pct}" placeholder="%">
+                <span class="input-group-text">% after</span>
+                <input type="number" class="form-control purge-days" min="1" value="${rule.after_days}" placeholder="days">
+                <span class="input-group-text">days</span>
+                <button class="btn btn-outline-danger btn-sm" onclick="this.parentElement.remove()"><i class="bi bi-x"></i></button>
+            `;
+            container.appendChild(row);
+        });
+    }
+
+    /**
+     * Collect purge schedule rules from the form into JSON array.
+     */
+    function collectPurgeSchedule() {
+        const rows = document.querySelectorAll('.purge-rule-row');
+        const rules = [];
+        rows.forEach(row => {
+            const pct = parseFloat(row.querySelector('.purge-pct').value) || 0;
+            const days = parseInt(row.querySelector('.purge-days').value) || 0;
+            if (pct > 0 && days > 0) {
+                rules.push({ pct: pct, after_days: days });
+            }
+        });
+        return JSON.stringify(rules);
+    }
+
+    /**
+     * Save (create or update) a capacity plan via API.
+     */
+    async function saveCapacityPlan() {
+        const editId = document.getElementById('capacity-plan-edit-id').value;
+        const payload = {
+            server_name: document.getElementById('cap-server').value,
+            sub_app_name: document.getElementById('cap-subapp').value,
+            daily_consumption_gb: parseFloat(document.getElementById('cap-daily-gb').value) || 0,
+            growth_rate_pct: parseFloat(document.getElementById('cap-growth-pct').value) || 0,
+            purge_schedule_json: collectPurgeSchedule(),
+            monthly_allocation_gb: parseFloat(document.getElementById('cap-allocation-gb').value) || 0,
+            alert_threshold_pct: parseFloat(document.getElementById('cap-threshold-pct').value) || 80,
+            contact_email: document.getElementById('cap-email').value,
+        };
+
+        let url = '/api/capacity-plans';
+        let method = 'POST';
+        if (editId) {
+            url += '/' + editId;
+            method = 'PUT';
+        }
+
+        const response = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        if (response.ok) {
+            cancelCapacityPlanForm();
+            loadCapacityPlans();
+            loadAllocationStatus();
+        }
+    }
+
+    /**
+     * Populate the form for editing an existing capacity plan.
+     */
+    function editCapacityPlan(plan) {
+        document.getElementById('capacity-plan-form').style.display = 'block';
+        document.getElementById('capacity-plan-form-title').innerHTML = '<i class="bi bi-pencil"></i> Edit Capacity Plan #' + plan.id;
+        document.getElementById('capacity-plan-edit-id').value = plan.id;
+        document.getElementById('cap-server').value = plan.server_name;
+        document.getElementById('cap-subapp').value = plan.sub_app_name;
+        document.getElementById('cap-daily-gb').value = plan.daily_consumption_gb;
+        document.getElementById('cap-growth-pct').value = plan.growth_rate_pct;
+        document.getElementById('cap-allocation-gb').value = plan.monthly_allocation_gb;
+        document.getElementById('cap-threshold-pct').value = plan.alert_threshold_pct;
+        document.getElementById('cap-email').value = plan.contact_email || '';
+        // Parse and load purge schedule rules into form
+        try {
+            const rules = JSON.parse(plan.purge_schedule_json || '[]');
+            resetPurgeRules(rules.length > 0 ? rules : [{pct: 50, after_days: 7}, {pct: 50, after_days: 30}]);
+        } catch (e) {
+            resetPurgeRules([{pct: 50, after_days: 7}, {pct: 50, after_days: 30}]);
+        }
+        populateCapacityDropdowns();
+    }
+
+    /**
+     * Delete a capacity plan by ID.
+     */
+    async function deleteCapacityPlan(planId) {
+        if (!confirm('Delete this capacity plan?')) return;
+        const response = await fetch('/api/capacity-plans/' + planId, { method: 'DELETE' });
+        if (response.ok) {
+            loadCapacityPlans();
+            loadAllocationStatus();
+        }
+    }
+
+    /**
+     * Load allocation usage status and render as cards with progress bars.
+     * Shows current usage vs monthly allocation with color-coded warnings.
+     */
+    async function loadAllocationStatus() {
+        const data = await apiFetch('/api/capacity-plans/status');
+        const container = document.getElementById('allocation-status-cards');
+        if (!container) return;
+
+        if (!data || !data.statuses || data.statuses.length === 0) {
+            container.innerHTML = '<div class="col-12 text-center text-muted py-3">No capacity plans configured. Add plans above to see allocation status.</div>';
+            return;
+        }
+
+        let html = '';
+        for (const s of data.statuses) {
+            // Color-code based on usage percentage
+            let barColor = 'bg-success';
+            let textColor = 'text-success';
+            if (s.usage_pct >= 90) { barColor = 'bg-danger'; textColor = 'text-danger'; }
+            else if (s.usage_pct >= s.alert_threshold_pct) { barColor = 'bg-warning'; textColor = 'text-warning'; }
+            else if (s.usage_pct >= 60) { barColor = 'bg-info'; textColor = 'text-info'; }
+
+            const breachedBadge = s.breached
+                ? '<span class="badge bg-danger ms-2"><i class="bi bi-exclamation-triangle"></i> THRESHOLD BREACHED</span>'
+                : '';
+
+            html += `
+                <div class="col-md-4 mb-3">
+                    <div class="card border-${s.breached ? 'danger' : 'secondary'}">
+                        <div class="card-body">
+                            <h6 class="card-title">
+                                <i class="bi bi-hdd-network"></i> ${s.server_name} / ${s.sub_app_name}
+                                ${breachedBadge}
+                            </h6>
+                            <div class="progress mb-2" style="height: 20px;">
+                                <div class="progress-bar ${barColor}" role="progressbar"
+                                     style="width: ${Math.min(s.usage_pct, 100)}%"
+                                     aria-valuenow="${s.usage_pct}" aria-valuemin="0" aria-valuemax="100">
+                                    ${s.usage_pct}%
+                                </div>
+                            </div>
+                            <div class="d-flex justify-content-between small">
+                                <span><strong>${s.current_usage_gb} GB</strong> used</span>
+                                <span>${s.monthly_allocation_gb} GB allocated</span>
+                            </div>
+                            <div class="small text-muted mt-1">
+                                Daily: ${s.daily_consumption_gb} GB | Growth: ${s.growth_rate_pct}%/day
+                            </div>
+                            ${s.contact_email ? '<div class="small text-muted"><i class="bi bi-envelope"></i> ' + s.contact_email + '</div>' : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        container.innerHTML = html;
+    }
+
+    /**
+     * Trigger the alert check — sends emails for any breached thresholds.
+     */
+    async function checkAlerts() {
+        const response = await fetch('/api/capacity-plans/check-alerts', { method: 'POST' });
+        if (response.ok) {
+            const data = await response.json();
+            alert(data.message || 'Alert check complete');
+            loadAllocationStatus();
+        } else {
+            alert('Failed to check alerts');
         }
     }
 </script>

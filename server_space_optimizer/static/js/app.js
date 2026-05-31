@@ -139,12 +139,17 @@ async function refreshDashboard() {
     updateElement('total-files', formatNumber(data.total_file_count));
     updateElement('last-scan-time', formatDateTime(data.last_scan_time));
 
-    // Render server cards with sub-app breakdown
-    renderServerCards(data.servers);
+    // Build server filter checkboxes (defined in dashboard.html)
+    if (typeof buildServerFilterCheckboxes === 'function') {
+        buildServerFilterCheckboxes(data.servers);
+    }
 
-    // Render charts
+    // Render charts BEFORE server cards (aggregate stats first)
     renderServerPieChart(data.servers);
     renderSubAppBarChart(data.servers);
+
+    // Render server cards with sub-app breakdown
+    renderServerCards(data.servers);
 
     // Update scan status
     updateScanStatus();
@@ -406,9 +411,10 @@ async function populateServerDropdowns() {
 }
 
 // ===========================================================
-// Purge page: load and display purge report
+// Purge page: load and display purge report with top-50 default
+// Accepts optional limit param (default 50, pass large number for all)
 // ===========================================================
-async function loadPurgeReport() {
+async function loadPurgeReport(limit) {
     const serverSelect = document.getElementById('purge-server-select');
     const subappSelect = document.getElementById('purge-subapp-select');
     const thresholdSelect = document.getElementById('purge-threshold');
@@ -418,8 +424,10 @@ async function loadPurgeReport() {
     const server = serverSelect.value;
     const subApp = subappSelect ? subappSelect.value : '';
     const threshold = thresholdSelect ? thresholdSelect.value : '365';
+    // Default to top 50 candidates unless a specific limit is given
+    const maxResults = limit || 50;
 
-    let url = `/api/servers/${encodeURIComponent(server)}/purge?threshold_days=${threshold}`;
+    let url = `/api/servers/${encodeURIComponent(server)}/purge?threshold_days=${threshold}&limit=${maxResults}`;
     if (subApp) {
         url += `&sub_app_name=${encodeURIComponent(subApp)}`;
     }
@@ -434,6 +442,17 @@ async function loadPurgeReport() {
     updateElement('purge-total-candidates', formatNumber(data.total_candidates));
     updateElement('purge-reclaimable-space', data.total_reclaimable_human);
     updateElement('purge-threshold-display', `${data.threshold_days} days`);
+
+    // Show "Load All" button if there are more candidates than shown
+    const loadAllBtn = document.getElementById('btn-load-all');
+    const showingLabel = document.getElementById('purge-showing-count');
+    if (data.candidates && data.total_candidates > data.candidates.length) {
+        if (loadAllBtn) loadAllBtn.style.display = 'inline-block';
+        if (showingLabel) showingLabel.textContent = `Showing ${data.candidates.length} of ${data.total_candidates}`;
+    } else {
+        if (loadAllBtn) loadAllBtn.style.display = 'none';
+        if (showingLabel) showingLabel.textContent = data.candidates ? `${data.candidates.length} files` : '';
+    }
 
     // Populate the purge candidates table
     const tbody = document.getElementById('purge-table-body');
@@ -451,7 +470,7 @@ async function loadPurgeReport() {
 
     let html = '';
     data.candidates.forEach((candidate, idx) => {
-        // Color-code the days stale column
+        // Color-code the days stale column based on severity
         let staleClass = '';
         if (candidate.days_since_modified > 365) staleClass = 'stale-critical';
         else if (candidate.days_since_modified > 180) staleClass = 'stale-danger';
