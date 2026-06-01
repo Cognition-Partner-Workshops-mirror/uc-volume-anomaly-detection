@@ -12,7 +12,7 @@ import os
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -880,17 +880,32 @@ def get_cost_estimation(
         except ValueError:
             pass
 
-    # Get current total size across all or specific server
+    # Get current total size using only the latest scan per (server, sub_app)
+    # to avoid inflating the sum with historical scan rows
+    from sqlalchemy import and_
+    latest_scans_subq = db.query(
+        ScanResult.server_name,
+        ScanResult.sub_app_name,
+        func.max(ScanResult.scan_timestamp).label("latest_ts"),
+    ).group_by(
+        ScanResult.server_name, ScanResult.sub_app_name
+    )
     if server_name:
-        size_result = db.query(
-            func.sum(ScanResult.total_size_bytes)
-        ).filter(
-            ScanResult.server_name == server_name,
-        ).scalar() or 0
-    else:
-        size_result = db.query(
-            func.sum(ScanResult.total_size_bytes)
-        ).scalar() or 0
+        latest_scans_subq = latest_scans_subq.filter(
+            ScanResult.server_name == server_name
+        )
+    latest_scans_subq = latest_scans_subq.subquery()
+
+    size_result = db.query(
+        func.sum(ScanResult.total_size_bytes)
+    ).join(
+        latest_scans_subq,
+        and_(
+            ScanResult.server_name == latest_scans_subq.c.server_name,
+            ScanResult.sub_app_name == latest_scans_subq.c.sub_app_name,
+            ScanResult.scan_timestamp == latest_scans_subq.c.latest_ts,
+        )
+    ).scalar() or 0
 
     current_gb = size_result / (1024 ** 3)
     monthly_cost = current_gb * cost_rate
@@ -1178,7 +1193,8 @@ def update_capacity_plan(
         SubAppCapacityPlan.id == plan_id
     ).first()
     if not existing:
-        return {"error": "Capacity plan not found"}, 404
+        # Raise proper FastAPI exception instead of Flask-style tuple return
+        raise HTTPException(status_code=404, detail="Capacity plan not found")
 
     existing.server_name = plan.server_name
     existing.sub_app_name = plan.sub_app_name
