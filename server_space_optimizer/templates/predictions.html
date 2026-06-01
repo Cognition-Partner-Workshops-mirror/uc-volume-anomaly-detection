@@ -1,0 +1,365 @@
+{% extends "base.html" %}
+
+{% block title %}Growth & Forecast - {{ product_name }}{% endblock %}
+{% block nav_predictions %}active{% endblock %}
+
+{% block content %}
+<!-- Page header -->
+<div class="page-header">
+    <h3><i class="bi bi-graph-up-arrow" style="color: #667eea;"></i> Growth Predictions & Space Forecast</h3>
+    <p>Analyze volume growth, purge rates, and forecast space consumption over 1 week, 1 month, 1 year, and 5 years</p>
+</div>
+
+<!-- Prediction controls -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-sliders"></i> Forecast Filters
+            </div>
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <label for="pred-server-select" class="form-label">Server</label>
+                        <select class="form-select" id="pred-server-select" onchange="onPredServerChange()">
+                            <option value="">Select a server...</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="pred-subapp-select" class="form-label">Sub-Application</label>
+                        <select class="form-select" id="pred-subapp-select">
+                            <option value="">All Sub-Apps</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <button class="btn btn-primary w-100" onclick="loadPredictions()">
+                            <i class="bi bi-graph-up-arrow"></i> Generate Forecast
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Current Usage Summary — shows size and cost of the currently selected scope -->
+<div class="row mb-4" id="current-usage-section" style="display: none;">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header" style="background: linear-gradient(135deg, #2c3e50, #4ca1af); color: white;">
+                <i class="bi bi-clipboard-data"></i> Current Usage Summary
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-3 mb-3">
+                        <h6 class="text-muted text-uppercase small">Current Storage</h6>
+                        <h3 class="fw-bold" style="color: #2c3e50;" id="usage-current-size">--</h3>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <h6 class="text-muted text-uppercase small">Current GB</h6>
+                        <h3 class="fw-bold" style="color: #4ca1af;" id="usage-current-gb">--</h3>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <h6 class="text-muted text-uppercase small">Current Monthly Cost</h6>
+                        <h3 class="fw-bold" style="color: #11998e;" id="usage-current-cost">--</h3>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <h6 class="text-muted text-uppercase small">Cost Rate</h6>
+                        <h3 class="fw-bold" style="color: #8e44ad;" id="usage-cost-rate">--</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Combined Size + Cost Forecast Table — detailed predictions at a glance -->
+<div class="row mb-4" id="forecast-detail-section" style="display: none;">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white;">
+                <i class="bi bi-table"></i> Detailed Size &amp; Cost Forecast
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Period</th>
+                                <th>Predicted Growth</th>
+                                <th>Predicted Total Size</th>
+                                <th>Growth Rate %</th>
+                                <th>Predicted Monthly Cost</th>
+                                <th>Predicted Period Cost</th>
+                                <th>Confidence</th>
+                            </tr>
+                        </thead>
+                        <tbody id="forecast-detail-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Forecast cards: 1 week, 1 month, 1 year, 5 years -->
+<div class="row mb-4" id="prediction-cards" style="display: none;">
+    <!-- Weekly forecast -->
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card forecast-card">
+            <div class="card-header text-white" style="background: linear-gradient(135deg, #667eea, #764ba2);">
+                <i class="bi bi-calendar-week"></i> 1 Week Forecast
+            </div>
+            <div class="card-body text-center">
+                <div class="forecast-value text-primary" id="pred-weekly-growth">--</div>
+                <div class="forecast-label text-muted">Predicted Growth</div>
+                <hr class="my-2">
+                <h5 id="pred-weekly-total" class="mb-0">--</h5>
+                <small class="text-muted">Predicted Total</small>
+                <div class="mt-2">
+                    <span class="badge" style="background: var(--gradient-primary);" id="pred-weekly-rate">--%</span>
+                </div>
+                <div class="mt-2 small text-muted">
+                    Confidence: <strong id="pred-weekly-conf">--</strong>
+                    | Points: <strong id="pred-weekly-dp">--</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Monthly forecast -->
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card forecast-card">
+            <div class="card-header text-white" style="background: linear-gradient(135deg, #11998e, #38ef7d);">
+                <i class="bi bi-calendar-month"></i> 1 Month Forecast
+            </div>
+            <div class="card-body text-center">
+                <div class="forecast-value text-success" id="pred-monthly-growth">--</div>
+                <div class="forecast-label text-muted">Predicted Growth</div>
+                <hr class="my-2">
+                <h5 id="pred-monthly-total" class="mb-0">--</h5>
+                <small class="text-muted">Predicted Total</small>
+                <div class="mt-2">
+                    <span class="badge" style="background: var(--gradient-success);" id="pred-monthly-rate">--%</span>
+                </div>
+                <div class="mt-2 small text-muted">
+                    Confidence: <strong id="pred-monthly-conf">--</strong>
+                    | Points: <strong id="pred-monthly-dp">--</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Yearly forecast -->
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card forecast-card">
+            <div class="card-header text-white" style="background: linear-gradient(135deg, #f2994a, #f2c94c);">
+                <i class="bi bi-calendar"></i> 1 Year Forecast
+            </div>
+            <div class="card-body text-center">
+                <div class="forecast-value" style="color: #f2994a;" id="pred-yearly-growth">--</div>
+                <div class="forecast-label text-muted">Predicted Growth</div>
+                <hr class="my-2">
+                <h5 id="pred-yearly-total" class="mb-0">--</h5>
+                <small class="text-muted">Predicted Total</small>
+                <div class="mt-2">
+                    <span class="badge" style="background: var(--gradient-warning);" id="pred-yearly-rate">--%</span>
+                </div>
+                <div class="mt-2 small text-muted">
+                    Confidence: <strong id="pred-yearly-conf">--</strong>
+                    | Points: <strong id="pred-yearly-dp">--</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- 5-Year forecast -->
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card forecast-card">
+            <div class="card-header text-white" style="background: linear-gradient(135deg, #e74c3c, #c0392b);">
+                <i class="bi bi-calendar-range"></i> 5 Year Forecast
+            </div>
+            <div class="card-body text-center">
+                <div class="forecast-value text-danger" id="pred-five-year-growth">--</div>
+                <div class="forecast-label text-muted">Predicted Growth</div>
+                <hr class="my-2">
+                <h5 id="pred-five-year-total" class="mb-0">--</h5>
+                <small class="text-muted">Predicted Total</small>
+                <div class="mt-2">
+                    <span class="badge" style="background: var(--gradient-danger);" id="pred-five-year-rate">--%</span>
+                </div>
+                <div class="mt-2 small text-muted">
+                    Confidence: <strong id="pred-five-year-conf">--</strong>
+                    | Points: <strong id="pred-five-year-dp">--</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Purge Rate & Net Space Forecast Section -->
+<div class="row mb-4" id="purge-forecast-section" style="display: none;">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-recycle"></i> Purge Rate & Net Space Forecast
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 text-center mb-3">
+                        <h6 class="text-muted text-uppercase small">Daily Purge Rate</h6>
+                        <h3 id="purge-rate-daily" class="fw-bold" style="color: #11998e;">--</h3>
+                    </div>
+                    <div class="col-md-3 text-center mb-3">
+                        <h6 class="text-muted text-uppercase small">After 1 Week (Net)</h6>
+                        <h3 id="net-forecast-week" class="fw-bold" style="color: #667eea;">--</h3>
+                    </div>
+                    <div class="col-md-3 text-center mb-3">
+                        <h6 class="text-muted text-uppercase small">After 1 Month (Net)</h6>
+                        <h3 id="net-forecast-month" class="fw-bold" style="color: #f2994a;">--</h3>
+                    </div>
+                    <div class="col-md-3 text-center mb-3">
+                        <h6 class="text-muted text-uppercase small">After 1 Year (Net)</h6>
+                        <h3 id="net-forecast-year" class="fw-bold" style="color: #e74c3c;">--</h3>
+                    </div>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-md-6 text-center mb-3">
+                        <h6 class="text-muted text-uppercase small">After 5 Years (Net)</h6>
+                        <h3 id="net-forecast-5year" class="fw-bold" style="color: #c0392b;">--</h3>
+                    </div>
+                    <div class="col-md-6 text-center mb-3">
+                        <h6 class="text-muted text-uppercase small">Monthly Purge Potential</h6>
+                        <h3 id="purge-rate-monthly" class="fw-bold" style="color: #38ef7d;">--</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Historical trend chart -->
+<div class="row mb-4" id="trend-chart-container" style="display: none;">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-graph-up"></i> Historical Space Usage Trend with Forecast Projection
+            </div>
+            <div class="card-body">
+                <canvas id="trend-chart" height="350"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Prediction table for all sub-apps -->
+<div class="row" id="prediction-table-container" style="display: none;">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-table"></i> Growth Forecast by Sub-Application
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Sub-App</th>
+                                <th>Current Size</th>
+                                <th>1 Week</th>
+                                <th>1 Month</th>
+                                <th>1 Year</th>
+                                <th>5 Years</th>
+                                <th>Weekly Rate %</th>
+                                <th>Monthly Rate %</th>
+                                <th>Yearly Rate %</th>
+                                <th>Confidence</th>
+                            </tr>
+                        </thead>
+                        <tbody id="prediction-table-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Populate server dropdown on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        populateServerDropdowns();
+    });
+
+    /**
+     * Override loadPredictions to also fetch cost data and populate
+     * the detailed size+cost forecast table and current usage section.
+     */
+    const _origLoadPredictions = loadPredictions;
+    loadPredictions = async function() {
+        await _origLoadPredictions();
+
+        // Fetch cost estimation data for cost-wise predictions
+        const costData = await apiFetch('/api/cost-estimation');
+        if (!costData) return;
+
+        const costRate = costData.cost_per_gb_month || 0.023;
+
+        // Show the current usage section with size and cost
+        const usageSection = document.getElementById('current-usage-section');
+        if (usageSection) usageSection.style.display = 'block';
+        updateElement('usage-current-size', costData.current_size_human || (costData.current_size_gb + ' GB'));
+        updateElement('usage-current-gb', costData.current_size_gb + ' GB');
+        updateElement('usage-current-cost', costData.current_monthly_cost_formatted);
+        updateElement('usage-cost-rate', '$' + costRate + '/GB/mo');
+
+        // Build the detailed forecast table combining size + cost
+        const detailSection = document.getElementById('forecast-detail-section');
+        const detailBody = document.getElementById('forecast-detail-body');
+        if (!detailSection || !detailBody) return;
+        detailSection.style.display = 'block';
+
+        // Gather prediction data from the cards (already rendered by _origLoadPredictions)
+        const periods = [
+            { label: '1 Week', key: 'weekly', costKey: 'weekly', months: 0.25 },
+            { label: '1 Month', key: 'monthly', costKey: 'monthly', months: 1 },
+            { label: '1 Year', key: 'yearly', costKey: 'yearly', months: 12 },
+            { label: '5 Years', key: 'five_year', costKey: 'five_year', months: 60 },
+        ];
+
+        let html = '';
+        for (const p of periods) {
+            // Read values from the prediction cards already populated
+            const growthEl = document.getElementById(`pred-${p.key.replace('_', '-')}-growth`);
+            const totalEl = document.getElementById(`pred-${p.key.replace('_', '-')}-total`);
+            const rateEl = document.getElementById(`pred-${p.key.replace('_', '-')}-rate`);
+            const confEl = document.getElementById(`pred-${p.key.replace('_', '-')}-conf`);
+
+            const growth = growthEl ? growthEl.textContent : '--';
+            const total = totalEl ? totalEl.textContent : '--';
+            const rate = rateEl ? rateEl.textContent : '--';
+            const conf = confEl ? confEl.textContent : '--';
+
+            // Cost calculation: predicted total cost for the period and predicted monthly cost
+            let periodCost = '--', monthlyCost = '--';
+            if (costData.forecasts && costData.forecasts[p.costKey]) {
+                periodCost = costData.forecasts[p.costKey].formatted;
+                monthlyCost = costData.forecasts[p.costKey].monthly_formatted || periodCost;
+            }
+
+            html += `
+                <tr>
+                    <td><strong>${p.label}</strong></td>
+                    <td>${growth}</td>
+                    <td>${total}</td>
+                    <td>${rate}</td>
+                    <td>${monthlyCost}</td>
+                    <td>${periodCost}</td>
+                    <td>${conf}</td>
+                </tr>`;
+        }
+
+        detailBody.innerHTML = html || '<tr><td colspan="7" class="text-center text-muted">No forecast data available</td></tr>';
+    };
+</script>
+{% endblock %}
