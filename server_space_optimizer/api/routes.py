@@ -1530,7 +1530,7 @@ def _send_threshold_alert(
         f"on {server_name} ({usage_pct}%)"
     )
     body = (
-        f"Storage Alert - Volume Anomaly Detection & Storage Forecaster\n"
+        f"Storage Alert - NAS Capacity Pulse\n"
         f"{'=' * 60}\n\n"
         f"Sub-Application: {sub_app_name}\n"
         f"Server: {server_name}\n"
@@ -1543,7 +1543,7 @@ def _send_threshold_alert(
         f"  - Running a purge cycle for old/stale files\n"
         f"  - Requesting an allocation increase\n"
         f"  - Reviewing the purge schedule configuration\n\n"
-        f"This is an automated alert from VADSF.\n"
+        f"This is an automated alert from NAS Capacity Pulse.\n"
     )
 
     sent_success = 0

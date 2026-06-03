@@ -48,8 +48,10 @@ _session_factory = None
 # Global config reference for template access
 _app_config = None
 
-# Product name shown on the login page
-PRODUCT_NAME = "Volume Anomaly Detection & Storage Forecaster"
+# Product name shown on the login page — renamed from VADSF to NAS Capacity Pulse
+PRODUCT_NAME = "NAS Capacity Pulse"
+# Punchline / tagline displayed below product name
+PRODUCT_TAGLINE = "Volume Anomaly Detection & Storage Forecaster"
 
 
 def _get_current_user(session_token: str) -> dict | None:
@@ -161,7 +163,7 @@ async def login_page(request: Request, error: str = ""):
     return templates.TemplateResponse(
         name="login.html",
         request=request,
-        context={"product_name": PRODUCT_NAME, "error": error},
+        context={"product_name": PRODUCT_NAME, "product_tagline": PRODUCT_TAGLINE, "error": error},
     )
 
 
@@ -185,6 +187,7 @@ async def login_submit(
             request=request,
             context={
                 "product_name": PRODUCT_NAME,
+                "product_tagline": PRODUCT_TAGLINE,
                 "error": "Invalid username or password",
             },
         )
@@ -208,6 +211,7 @@ async def signup_page(request: Request, error: str = "", success: str = ""):
         request=request,
         context={
             "product_name": PRODUCT_NAME,
+            "product_tagline": PRODUCT_TAGLINE,
             "error": error,
             "success": success,
         },
@@ -237,6 +241,7 @@ async def signup_submit(
             request=request,
             context={
                 "product_name": PRODUCT_NAME,
+                "product_tagline": PRODUCT_TAGLINE,
                 "error": "Username or email already exists",
                 "success": "",
             },
@@ -271,7 +276,7 @@ async def dashboard_page(
     return templates.TemplateResponse(
         name="dashboard.html",
         request=request,
-        context={"user": user, "product_name": PRODUCT_NAME},
+        context={"user": user, "product_name": PRODUCT_NAME, "product_tagline": PRODUCT_TAGLINE},
     )
 
 
@@ -287,7 +292,7 @@ async def purge_page(
     return templates.TemplateResponse(
         name="purge.html",
         request=request,
-        context={"user": user, "product_name": PRODUCT_NAME},
+        context={"user": user, "product_name": PRODUCT_NAME, "product_tagline": PRODUCT_TAGLINE},
     )
 
 
@@ -303,7 +308,7 @@ async def predictions_page(
     return templates.TemplateResponse(
         name="predictions.html",
         request=request,
-        context={"user": user, "product_name": PRODUCT_NAME},
+        context={"user": user, "product_name": PRODUCT_NAME, "product_tagline": PRODUCT_TAGLINE},
     )
 
 
@@ -319,7 +324,7 @@ async def extensions_page(
     return templates.TemplateResponse(
         name="extensions.html",
         request=request,
-        context={"user": user, "product_name": PRODUCT_NAME},
+        context={"user": user, "product_name": PRODUCT_NAME, "product_tagline": PRODUCT_TAGLINE},
     )
 
 
@@ -335,7 +340,7 @@ async def settings_page(
     return templates.TemplateResponse(
         name="settings.html",
         request=request,
-        context={"user": user, "product_name": PRODUCT_NAME},
+        context={"user": user, "product_name": PRODUCT_NAME, "product_tagline": PRODUCT_TAGLINE},
     )
 
 
