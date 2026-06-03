@@ -296,10 +296,6 @@ function renderServerPieChart(servers) {
 // ===========================================================
 // Chart: Sub-app space breakdown bar chart
 // ===========================================================
-// Track current page for sub-app bar chart pagination (10 per page)
-let subAppBarPage = 0;
-let subAppBarAllItems = [];  // sorted [{label, size}]
-
 function renderSubAppBarChart(servers) {
     const canvas = document.getElementById('subapp-bar-chart');
     if (!canvas) return;
@@ -310,6 +306,11 @@ function renderSubAppBarChart(servers) {
 
     // Flatten all sub-apps across servers with server prefix
     const items = [];
+    const colors = [
+        '#667eea', '#38ef7d', '#e74c3c', '#f2994a', '#9b59b6',
+        '#2193b0', '#f2c94c', '#11998e', '#764ba2', '#c0392b',
+    ];
+
     for (const server of servers) {
         for (const subApp of server.sub_apps) {
             items.push({
@@ -319,40 +320,12 @@ function renderSubAppBarChart(servers) {
         }
     }
 
-    // Sort descending by size
+    // Sort descending by size so largest sub-apps appear at the top
     items.sort((a, b) => b.size - a.size);
-    subAppBarAllItems = items;
-    subAppBarPage = 0;
 
-    // Render first page and pagination controls
-    renderSubAppBarPage();
-}
-
-/**
- * Render a single page of the sub-app bar chart (10 items per page).
- * Sorted descending by size. Pagination controls shown below the chart.
- */
-function renderSubAppBarPage() {
-    const canvas = document.getElementById('subapp-bar-chart');
-    if (!canvas) return;
-
-    if (subappBarChart) {
-        subappBarChart.destroy();
-    }
-
-    const PAGE_SIZE = 10;
-    const start = subAppBarPage * PAGE_SIZE;
-    const pageItems = subAppBarAllItems.slice(start, start + PAGE_SIZE);
-    const totalPages = Math.ceil(subAppBarAllItems.length / PAGE_SIZE);
-
-    const colors = [
-        '#667eea', '#38ef7d', '#e74c3c', '#f2994a', '#9b59b6',
-        '#2193b0', '#f2c94c', '#11998e', '#764ba2', '#c0392b',
-    ];
-
-    const labels = pageItems.map(i => i.label);
-    const sizes = pageItems.map(i => i.size);
-    const bgColors = pageItems.map((_, idx) => colors[(start + idx) % colors.length]);
+    const labels = items.map(i => i.label);
+    const sizes = items.map(i => i.size);
+    const bgColors = items.map((_, idx) => colors[idx % colors.length]);
 
     subappBarChart = new Chart(canvas, {
         type: 'bar',
@@ -399,31 +372,6 @@ function renderSubAppBarPage() {
             },
         },
     });
-
-    // Render pagination controls below the chart
-    let paginationContainer = document.getElementById('subapp-bar-pagination');
-    if (!paginationContainer) {
-        paginationContainer = document.createElement('div');
-        paginationContainer.id = 'subapp-bar-pagination';
-        paginationContainer.className = 'text-center mt-2';
-        canvas.parentElement.appendChild(paginationContainer);
-    }
-    if (totalPages <= 1) {
-        paginationContainer.innerHTML = '';
-        return;
-    }
-    // Show page info and prev/next buttons
-    paginationContainer.innerHTML = `
-        <button class="btn btn-sm btn-outline-secondary me-2" ${subAppBarPage === 0 ? 'disabled' : ''}
-            onclick="subAppBarPage--; renderSubAppBarPage();">
-            <i class="bi bi-chevron-left"></i> Prev
-        </button>
-        <span class="text-muted small">Page ${subAppBarPage + 1} of ${totalPages}
-            (${subAppBarAllItems.length} sub-apps)</span>
-        <button class="btn btn-sm btn-outline-secondary ms-2" ${subAppBarPage >= totalPages - 1 ? 'disabled' : ''}
-            onclick="subAppBarPage++; renderSubAppBarPage();">
-            Next <i class="bi bi-chevron-right"></i>
-        </button>`;
 }
 
 // ===========================================================
@@ -1022,11 +970,11 @@ async function renderCombinedGrowthPurgeChart(serverName) {
                     borderWidth: 2.5,
                     spanGaps: false,
                 },
-                // Horizontal average/expected volume reference line
+                // Horizontal average/expected volume reference line (light blue)
                 {
                     label: 'Avg. Volume',
                     data: avgLineData,
-                    borderColor: '#ff9800',
+                    borderColor: '#5bc0de',
                     borderDash: [10, 5],
                     backgroundColor: 'transparent',
                     fill: false,
