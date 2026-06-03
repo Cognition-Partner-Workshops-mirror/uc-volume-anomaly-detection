@@ -113,6 +113,40 @@
     </div>
 </div>
 
+<!-- Purge History Summary — purgeable amounts at 1 week / 1 month / 1 year / 5 years -->
+<div class="row mb-4" id="purge-history-section">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header" style="background: linear-gradient(135deg, #c0392b, #e74c3c); color: white;">
+                <i class="bi bi-clock-history"></i> Purge History — Eligible Data by Time Horizon
+            </div>
+            <div class="card-body">
+                <div class="row" id="purge-history-cards">
+                    <div class="col-12 text-center py-3 text-muted">
+                        Select a server and click Analyze to view purge history
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Purge History Monthly Trend Chart -->
+<div class="row mb-4" id="purge-history-chart-section">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-graph-down"></i> Purgeable Space Trend (Last 12 Months)
+            </div>
+            <div class="card-body">
+                <div style="height: 300px;">
+                    <canvas id="purge-history-chart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Purge candidates table with top 50 default and load more -->
 <div class="row">
     <div class="col-12">
@@ -179,7 +213,7 @@
 
     /**
      * When a server is selected in purge, populate the sub-app dropdown
-     * with sub-apps available on that server.
+     * with sub-apps available on that server and load purge history.
      */
     async function onPurgeServerChange() {
         const serverSelect = document.getElementById('purge-server-select');
@@ -203,6 +237,9 @@
                 subappSelect.appendChild(opt);
             });
         }
+
+        // Load purge history summary (1w/1m/1y/5y cards + chart)
+        loadPurgeHistorySummary(serverSelect.value);
 
         // Auto-run the purge report when server is selected
         loadPurgeReport();

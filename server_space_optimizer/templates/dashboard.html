@@ -145,6 +145,30 @@
     </div>
 </div>
 
+<!-- Combined Growth / Purge / Forecast Chart — past 1 year to future 5 years -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header" style="background: linear-gradient(135deg, #2c3e50, #4ca1af); color: white;">
+                <i class="bi bi-graph-up-arrow"></i> Growth, Purge &amp; Forecast — Past 1 Year to Future 5 Years
+            </div>
+            <div class="card-body">
+                <div style="height: 400px;">
+                    <canvas id="combined-gpf-chart"></canvas>
+                </div>
+                <div class="mt-2 text-center">
+                    <small class="text-muted">
+                        <span style="color: #1a7a3a;">&#9632;</span> Growth (Actual) &nbsp;&nbsp;
+                        <span style="color: #e74c3c;">&#9632;</span> Purge (Actual) &nbsp;&nbsp;
+                        <span style="color: #f5a6a6;">&#9632;</span> Purge (Forecast) &nbsp;&nbsp;
+                        <span style="color: #b0b0b0;">&#9632; - -</span> Forecast (Projected)
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Server cards with sub-app breakdown (comes AFTER aggregate charts) -->
 <div class="row" id="server-cards">
     <!-- Dynamically populated by JavaScript -->
@@ -163,10 +187,12 @@
     let allDashboardServers = [];
     let selectedServers = new Set();
 
-    // Load dashboard data and cost estimation on page load
+    // Load dashboard data, cost estimation, and combined chart on page load
     document.addEventListener('DOMContentLoaded', function() {
         refreshDashboard();
         loadDashboardCost();
+        // Render the combined growth/purge/forecast chart (all servers)
+        renderCombinedGrowthPurgeChart(null);
         // Auto-refresh every 2 minutes to show latest scan data
         setInterval(refreshDashboard, 120000);
         setInterval(loadDashboardCost, 120000);

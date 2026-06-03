@@ -300,8 +300,10 @@ def main():
         print("\n--- Generating file metadata ---")
         generate_files(db, target_count=1200)
 
-        print("\n--- Generating historical snapshots (90 days) ---")
-        generate_historical_snapshots(db, days_back=90)
+        # Generate 400 days of snapshots so the combined chart has
+        # a full year of historical data for growth/purge/forecast view
+        print("\n--- Generating historical snapshots (400 days) ---")
+        generate_historical_snapshots(db, days_back=400)
 
         print("\n--- Seeding sub-app configurations ---")
         generate_sub_app_configs(db)

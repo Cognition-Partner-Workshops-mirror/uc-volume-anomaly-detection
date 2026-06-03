@@ -385,26 +385,38 @@ function formatSizeFromBytes(bytes) {
 }
 
 // ===========================================================
-// Populate server dropdowns on purge and prediction pages
+// Populate server dropdowns on purge and prediction pages.
+// Uses /api/config/servers to include DB-added servers (not just YAML).
 // ===========================================================
 async function populateServerDropdowns() {
+    // Fetch ALL known servers from the config/servers API which merges
+    // both YAML-configured and DB-added (Settings UI) servers
+    const serverData = await apiFetch('/api/config/servers');
+    const serverNames = serverData ? serverData.servers : [];
+
+    // Also fetch dashboard data for host info (used as display label)
     const data = cachedDashboardData || await apiFetch('/api/dashboard');
-    if (!data) return;
-    cachedDashboardData = data;
+    if (data) cachedDashboardData = data;
+
+    // Build a lookup map of server_name -> server_host from dashboard data
+    const hostMap = {};
+    if (data && data.servers) {
+        data.servers.forEach(s => { hostMap[s.server_name] = s.server_host; });
+    }
 
     // Populate all server select dropdowns on the page
     const selects = document.querySelectorAll(
         '#purge-server-select, #pred-server-select'
     );
     for (const select of selects) {
-        // Clear existing options except the first placeholder
         while (select.options.length > 1) {
             select.remove(1);
         }
-        for (const server of data.servers) {
+        for (const srvName of serverNames) {
             const option = document.createElement('option');
-            option.value = server.server_name;
-            option.textContent = `${server.server_name} (${server.server_host})`;
+            option.value = srvName;
+            const host = hostMap[srvName] || srvName;
+            option.textContent = `${srvName} (${host})`;
             select.appendChild(option);
         }
     }
@@ -521,30 +533,31 @@ function exportPurgeCsv() {
 }
 
 // ===========================================================
-// Predictions page: handle server selection change
+// Predictions page: handle server selection change.
+// Uses /api/config/sub-app-names to include DB-added sub-apps.
 // ===========================================================
 async function onPredServerChange() {
     const serverSelect = document.getElementById('pred-server-select');
     const subappSelect = document.getElementById('pred-subapp-select');
     if (!serverSelect || !serverSelect.value || !subappSelect) return;
 
-    // Populate sub-app dropdown based on selected server
-    const data = cachedDashboardData || await apiFetch('/api/dashboard');
-    if (!data) return;
-
     // Clear existing sub-app options
     while (subappSelect.options.length > 1) {
         subappSelect.remove(1);
     }
 
-    const server = data.servers.find(s => s.server_name === serverSelect.value);
-    if (server) {
-        for (const subApp of server.sub_apps) {
+    // Fetch sub-app names from the lookup API (includes DB-added sub-apps)
+    const data = await apiFetch(
+        '/api/config/sub-app-names?server_name=' +
+        encodeURIComponent(serverSelect.value)
+    );
+    if (data && data.sub_apps) {
+        data.sub_apps.forEach(name => {
             const option = document.createElement('option');
-            option.value = subApp.sub_app_name;
-            option.textContent = subApp.sub_app_name;
+            option.value = name;
+            option.textContent = name;
             subappSelect.appendChild(option);
-        }
+        });
     }
 }
 
@@ -795,6 +808,279 @@ function renderTrendChart(historicalData, predictions) {
         },
     });
 }
+
+// ===========================================================
+// Dashboard: combined Growth / Purge / Forecast chart
+// Shows past 1 year to future 5 years on a single line chart.
+// Growth = green, Purge = red, Forecast = dotted blue.
+// ===========================================================
+let combinedChartInstance = null;
+
+async function renderCombinedGrowthPurgeChart(serverName) {
+    const url = serverName
+        ? '/api/chart/growth-purge-forecast?server_name=' + encodeURIComponent(serverName)
+        : '/api/chart/growth-purge-forecast';
+    const data = await apiFetch(url);
+    if (!data) return;
+
+    const canvas = document.getElementById('combined-gpf-chart');
+    if (!canvas) return;
+
+    // Destroy previous chart instance if it exists
+    if (combinedChartInstance) {
+        combinedChartInstance.destroy();
+        combinedChartInstance = null;
+    }
+
+    // Build unified labels from historical + forecast
+    const allLabels = data.labels || [];
+
+    // Growth line — historical values padded with nulls for forecast months
+    const growthData = [];
+    const growthLabels = data.growth.historical_labels || [];
+    const growthVals = data.growth.historical_values || [];
+    for (const lbl of allLabels) {
+        const idx = growthLabels.indexOf(lbl);
+        growthData.push(idx >= 0 ? growthVals[idx] : null);
+    }
+
+    // Purge lines — split into historical (solid red) and forecast (light red)
+    const purgeHistLabels = data.purge.historical_labels || [];
+    const purgeHistVals = data.purge.historical_values || [];
+    const purgeForeLabels = data.purge.forecast_labels || [];
+    const purgeForeVals = data.purge.forecast_values || [];
+    const purgeHistData = [];   // solid red for past dates
+    const purgeForeData = [];   // light red for future dates
+    // Find the last historical purge label to bridge the two series
+    const lastHistPurgeLabel = purgeHistLabels.length > 0
+        ? purgeHistLabels[purgeHistLabels.length - 1] : null;
+    let lastHistPurgeVal = null;
+    for (const lbl of allLabels) {
+        const hIdx = purgeHistLabels.indexOf(lbl);
+        if (hIdx >= 0) {
+            purgeHistData.push(purgeHistVals[hIdx]);
+            lastHistPurgeVal = purgeHistVals[hIdx];
+            purgeForeData.push(null);
+        } else {
+            purgeHistData.push(null);
+            const fIdx = purgeForeLabels.indexOf(lbl);
+            if (fIdx >= 0) {
+                purgeForeData.push(purgeForeVals[fIdx]);
+            } else {
+                purgeForeData.push(null);
+            }
+        }
+    }
+    // Bridge: set the first forecast purge point to match the last
+    // historical value so the two line segments connect visually
+    if (lastHistPurgeLabel) {
+        const bridgeIdx = allLabels.indexOf(lastHistPurgeLabel);
+        if (bridgeIdx >= 0) {
+            purgeForeData[bridgeIdx] = lastHistPurgeVal;
+        }
+    }
+
+    // Forecast line — only for future months
+    const foreLabels = data.forecast.labels || [];
+    const foreVals = data.forecast.values || [];
+    const forecastData = [];
+    // Connect forecast to last growth point for visual continuity
+    const lastGrowthIdx = growthData.length - 1;
+    for (let i = 0; i < allLabels.length; i++) {
+        const lbl = allLabels[i];
+        if (i === growthData.length - 1 && growthData[i] !== null) {
+            // Bridge point: set forecast = growth at the junction
+            forecastData.push(growthData[i]);
+            continue;
+        }
+        const fIdx = foreLabels.indexOf(lbl);
+        forecastData.push(fIdx >= 0 ? foreVals[fIdx] : null);
+    }
+
+    combinedChartInstance = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: allLabels,
+            datasets: [
+                {
+                    label: 'Growth (Actual)',
+                    data: growthData,
+                    borderColor: '#1a7a3a',
+                    backgroundColor: 'rgba(26, 122, 58, 0.08)',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 3,
+                    pointBackgroundColor: '#1a7a3a',
+                    borderWidth: 2.5,
+                    spanGaps: false,
+                },
+                {
+                    label: 'Purge (Actual)',
+                    data: purgeHistData,
+                    borderColor: '#e74c3c',
+                    backgroundColor: 'rgba(231, 76, 60, 0.06)',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 3,
+                    pointBackgroundColor: '#e74c3c',
+                    borderWidth: 2.5,
+                    spanGaps: false,
+                },
+                {
+                    label: 'Purge (Forecast)',
+                    data: purgeForeData,
+                    borderColor: '#f5a6a6',
+                    backgroundColor: 'rgba(245, 166, 166, 0.06)',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 2,
+                    pointBackgroundColor: '#f5a6a6',
+                    borderWidth: 2.5,
+                    spanGaps: false,
+                },
+                {
+                    label: 'Forecast (Projected)',
+                    data: forecastData,
+                    borderColor: '#b0b0b0',
+                    borderDash: [8, 4],
+                    backgroundColor: 'rgba(176, 176, 176, 0.06)',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 2,
+                    pointBackgroundColor: '#b0b0b0',
+                    borderWidth: 2.5,
+                    spanGaps: false,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: { font: { weight: '600' }, padding: 20 },
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(26, 26, 46, 0.9)',
+                    cornerRadius: 8,
+                    padding: 12,
+                    callbacks: {
+                        label: function(context) {
+                            if (context.raw === null) return '';
+                            return ` ${context.dataset.label}: ${formatSizeFromBytes(context.raw)}`;
+                        },
+                    },
+                },
+            },
+            scales: {
+                x: {
+                    title: { display: true, text: 'Month', font: { weight: '600' } },
+                    grid: { color: 'rgba(0,0,0,0.04)' },
+                    ticks: { maxTicksLimit: 20 },
+                },
+                y: {
+                    title: { display: true, text: 'Size', font: { weight: '600' } },
+                    grid: { color: 'rgba(0,0,0,0.04)' },
+                    ticks: {
+                        callback: function(value) { return formatSizeFromBytes(value); },
+                    },
+                },
+            },
+        },
+    });
+}
+
+
+// ===========================================================
+// Purge page: purge history summary cards + chart
+// Shows purgeable amounts at 1 week / 1 month / 1 year / 5 years
+// ===========================================================
+let purgeHistoryChartInstance = null;
+
+async function loadPurgeHistorySummary(serverName) {
+    const url = serverName
+        ? '/api/purge-history-summary?server_name=' + encodeURIComponent(serverName)
+        : '/api/purge-history-summary';
+    const data = await apiFetch(url);
+    if (!data) return;
+
+    // Render summary cards
+    const container = document.getElementById('purge-history-cards');
+    if (container && data.summaries) {
+        const colors = ['#e74c3c', '#f39c12', '#3498db', '#8e44ad'];
+        const icons = ['bi-calendar-week', 'bi-calendar-month', 'bi-calendar', 'bi-calendar-range'];
+        let html = '';
+        data.summaries.forEach((s, i) => {
+            html += `
+            <div class="col-md-3 mb-3">
+                <div class="card">
+                    <div class="card-header text-white" style="background: ${colors[i]};">
+                        <i class="bi ${icons[i]}"></i> ${s.label}
+                    </div>
+                    <div class="card-body text-center">
+                        <h3 class="fw-bold" style="color: ${colors[i]};">${s.total_human}</h3>
+                        <small class="text-muted">${s.file_count} files eligible (>${s.threshold_days} days old)</small>
+                    </div>
+                </div>
+            </div>`;
+        });
+        container.innerHTML = html;
+    }
+
+    // Render monthly trend chart
+    const canvas = document.getElementById('purge-history-chart');
+    if (!canvas || !data.monthly_trend) return;
+    if (purgeHistoryChartInstance) {
+        purgeHistoryChartInstance.destroy();
+        purgeHistoryChartInstance = null;
+    }
+    const labels = data.monthly_trend.map(m => m.month);
+    const values = data.monthly_trend.map(m => m.purgeable_bytes);
+
+    purgeHistoryChartInstance = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Purgeable Space (>90 days)',
+                data: values,
+                borderColor: '#e74c3c',
+                backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 4,
+                pointBackgroundColor: '#e74c3c',
+                borderWidth: 2.5,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { labels: { font: { weight: '600' }, padding: 15 } },
+                tooltip: {
+                    backgroundColor: 'rgba(26, 26, 46, 0.9)',
+                    cornerRadius: 8,
+                    padding: 12,
+                    callbacks: {
+                        label: function(ctx) {
+                            return ` Purgeable: ${formatSizeFromBytes(ctx.raw)}`;
+                        },
+                    },
+                },
+            },
+            scales: {
+                x: { title: { display: true, text: 'Month' }, grid: { color: 'rgba(0,0,0,0.04)' } },
+                y: {
+                    title: { display: true, text: 'Purgeable Space' },
+                    grid: { color: 'rgba(0,0,0,0.04)' },
+                    ticks: { callback: v => formatSizeFromBytes(v) },
+                },
+            },
+        },
+    });
+}
+
 
 // ===========================================================
 // Initialize: poll scan status every 30 seconds

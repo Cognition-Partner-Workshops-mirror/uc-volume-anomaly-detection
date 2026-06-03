@@ -73,101 +73,229 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     Get the main dashboard summary with all servers and sub-apps.
 
     Returns aggregate space usage across all configured servers,
-    broken down by sub-application.
+    broken down by sub-application. Merges servers from both the
+    YAML config file AND the database (SubAppConfigDB) so that
+    servers added via the Settings UI are visible on all pages.
     """
     servers = []
     total_size = 0
     total_files = 0
     total_sub_apps = 0
     latest_scan_time = None
+    # Track which server+sub-app combos we've already added from YAML
+    seen_server_subapps = set()
+    seen_servers = set()
 
-    if _app_config is None:
-        return DashboardSummary(
-            total_servers=0,
-            total_sub_apps=0,
-            total_size_bytes=0,
-            total_size_human="0 B",
-            total_file_count=0,
-            servers=[],
-        )
+    if _app_config is not None:
+        for server_config in _app_config.servers:
+            server_size = 0
+            server_files = 0
+            sub_app_infos = []
+            seen_servers.add(server_config.server_name)
 
-    for server_config in _app_config.servers:
-        server_size = 0
-        server_files = 0
-        sub_app_infos = []
-
-        for sub_app in server_config.sub_apps:
-            # Get the latest scan result for this sub-app
-            latest_scan = (
-                db.query(ScanResult)
-                .filter(
-                    ScanResult.server_name == server_config.server_name,
-                    ScanResult.sub_app_name == sub_app.name,
+            for sub_app in server_config.sub_apps:
+                seen_server_subapps.add(
+                    (server_config.server_name, sub_app.name)
                 )
+                # Get the latest scan result for this sub-app
+                latest_scan = (
+                    db.query(ScanResult)
+                    .filter(
+                        ScanResult.server_name == server_config.server_name,
+                        ScanResult.sub_app_name == sub_app.name,
+                    )
+                    .order_by(ScanResult.scan_timestamp.desc())
+                    .first()
+                )
+
+                if latest_scan:
+                    sub_app_info = SubAppSpaceInfo(
+                        sub_app_name=sub_app.name,
+                        total_size_bytes=latest_scan.total_size_bytes,
+                        total_size_human=format_size(latest_scan.total_size_bytes),
+                        file_count=latest_scan.total_file_count,
+                        dir_count=latest_scan.total_dir_count,
+                        last_scan_time=latest_scan.scan_timestamp,
+                    )
+                    server_size += latest_scan.total_size_bytes
+                    server_files += latest_scan.total_file_count
+
+                    if (
+                        latest_scan_time is None
+                        or latest_scan.scan_timestamp > latest_scan_time
+                    ):
+                        latest_scan_time = latest_scan.scan_timestamp
+                else:
+                    sub_app_info = SubAppSpaceInfo(
+                        sub_app_name=sub_app.name,
+                        total_size_bytes=0,
+                        total_size_human="0 B",
+                        file_count=0,
+                        dir_count=0,
+                    )
+
+                sub_app_infos.append(sub_app_info)
+                total_sub_apps += 1
+
+            latest_server_scan = (
+                db.query(ScanResult)
+                .filter(ScanResult.server_name == server_config.server_name)
                 .order_by(ScanResult.scan_timestamp.desc())
                 .first()
             )
 
-            if latest_scan:
-                sub_app_info = SubAppSpaceInfo(
-                    sub_app_name=sub_app.name,
-                    total_size_bytes=latest_scan.total_size_bytes,
-                    total_size_human=format_size(latest_scan.total_size_bytes),
-                    file_count=latest_scan.total_file_count,
-                    dir_count=latest_scan.total_dir_count,
-                    last_scan_time=latest_scan.scan_timestamp,
+            server_info = ServerSpaceInfo(
+                server_name=server_config.server_name,
+                server_host=server_config.server_host,
+                nas_mount_path=server_config.nas_mount_path,
+                total_size_bytes=server_size,
+                total_size_human=format_size(server_size),
+                total_file_count=server_files,
+                sub_apps=sub_app_infos,
+                last_scan_time=(
+                    latest_server_scan.scan_timestamp if latest_server_scan else None
+                ),
+                scan_type=(
+                    latest_server_scan.scan_type if latest_server_scan else "unknown"
+                ),
+            )
+            servers.append(server_info)
+            total_size += server_size
+            total_files += server_files
+
+    # ---- Merge in DB-added servers/sub-apps not already in YAML config ----
+    # This ensures servers added via Settings UI appear on the dashboard.
+    db_configs = (
+        db.query(SubAppConfigDB)
+        .order_by(SubAppConfigDB.server_name, SubAppConfigDB.sub_app_name)
+        .all()
+    )
+    # Group DB configs by server
+    db_server_map = {}
+    for cfg in db_configs:
+        key = (cfg.server_name, cfg.sub_app_name)
+        if key not in seen_server_subapps:
+            db_server_map.setdefault(cfg.server_name, []).append(cfg)
+
+    for srv_name, cfg_list in db_server_map.items():
+        if srv_name in seen_servers:
+            # Server exists from YAML — append missing sub-apps to it
+            existing_srv = next(
+                (s for s in servers if s.server_name == srv_name), None
+            )
+            if existing_srv:
+                for cfg in cfg_list:
+                    latest_scan = (
+                        db.query(ScanResult)
+                        .filter(
+                            ScanResult.server_name == srv_name,
+                            ScanResult.sub_app_name == cfg.sub_app_name,
+                        )
+                        .order_by(ScanResult.scan_timestamp.desc())
+                        .first()
+                    )
+                    if latest_scan:
+                        sa_info = SubAppSpaceInfo(
+                            sub_app_name=cfg.sub_app_name,
+                            total_size_bytes=latest_scan.total_size_bytes,
+                            total_size_human=format_size(latest_scan.total_size_bytes),
+                            file_count=latest_scan.total_file_count,
+                            dir_count=latest_scan.total_dir_count,
+                            last_scan_time=latest_scan.scan_timestamp,
+                        )
+                        existing_srv.total_size_bytes += latest_scan.total_size_bytes
+                        existing_srv.total_size_human = format_size(
+                            existing_srv.total_size_bytes
+                        )
+                        existing_srv.total_file_count += latest_scan.total_file_count
+                        total_size += latest_scan.total_size_bytes
+                        total_files += latest_scan.total_file_count
+                    else:
+                        sa_info = SubAppSpaceInfo(
+                            sub_app_name=cfg.sub_app_name,
+                            total_size_bytes=0,
+                            total_size_human="0 B",
+                            file_count=0,
+                            dir_count=0,
+                        )
+                    existing_srv.sub_apps.append(sa_info)
+                    total_sub_apps += 1
+        else:
+            # Entirely new server from DB — create a new server entry
+            srv_size = 0
+            srv_files = 0
+            sub_app_infos = []
+            # Derive host/mount from the first config's path
+            srv_host = cfg_list[0].server_name
+            srv_mount = cfg_list[0].path or ""
+
+            for cfg in cfg_list:
+                latest_scan = (
+                    db.query(ScanResult)
+                    .filter(
+                        ScanResult.server_name == srv_name,
+                        ScanResult.sub_app_name == cfg.sub_app_name,
+                    )
+                    .order_by(ScanResult.scan_timestamp.desc())
+                    .first()
                 )
-                server_size += latest_scan.total_size_bytes
-                server_files += latest_scan.total_file_count
+                if latest_scan:
+                    sa_info = SubAppSpaceInfo(
+                        sub_app_name=cfg.sub_app_name,
+                        total_size_bytes=latest_scan.total_size_bytes,
+                        total_size_human=format_size(latest_scan.total_size_bytes),
+                        file_count=latest_scan.total_file_count,
+                        dir_count=latest_scan.total_dir_count,
+                        last_scan_time=latest_scan.scan_timestamp,
+                    )
+                    srv_size += latest_scan.total_size_bytes
+                    srv_files += latest_scan.total_file_count
+                    if (
+                        latest_scan_time is None
+                        or latest_scan.scan_timestamp > latest_scan_time
+                    ):
+                        latest_scan_time = latest_scan.scan_timestamp
+                else:
+                    sa_info = SubAppSpaceInfo(
+                        sub_app_name=cfg.sub_app_name,
+                        total_size_bytes=0,
+                        total_size_human="0 B",
+                        file_count=0,
+                        dir_count=0,
+                    )
+                sub_app_infos.append(sa_info)
+                total_sub_apps += 1
 
-                # Track the most recent scan time globally
-                if (
-                    latest_scan_time is None
-                    or latest_scan.scan_timestamp > latest_scan_time
-                ):
-                    latest_scan_time = latest_scan.scan_timestamp
-            else:
-                sub_app_info = SubAppSpaceInfo(
-                    sub_app_name=sub_app.name,
-                    total_size_bytes=0,
-                    total_size_human="0 B",
-                    file_count=0,
-                    dir_count=0,
-                )
+            latest_server_scan = (
+                db.query(ScanResult)
+                .filter(ScanResult.server_name == srv_name)
+                .order_by(ScanResult.scan_timestamp.desc())
+                .first()
+            )
 
-            sub_app_infos.append(sub_app_info)
-            total_sub_apps += 1
-
-        # Get the latest scan type for this server
-        latest_server_scan = (
-            db.query(ScanResult)
-            .filter(ScanResult.server_name == server_config.server_name)
-            .order_by(ScanResult.scan_timestamp.desc())
-            .first()
-        )
-
-        server_info = ServerSpaceInfo(
-            server_name=server_config.server_name,
-            server_host=server_config.server_host,
-            nas_mount_path=server_config.nas_mount_path,
-            total_size_bytes=server_size,
-            total_size_human=format_size(server_size),
-            total_file_count=server_files,
-            sub_apps=sub_app_infos,
-            last_scan_time=(
-                latest_server_scan.scan_timestamp if latest_server_scan else None
-            ),
-            scan_type=(
-                latest_server_scan.scan_type if latest_server_scan else "unknown"
-            ),
-        )
-        servers.append(server_info)
-
-        total_size += server_size
-        total_files += server_files
+            server_info = ServerSpaceInfo(
+                server_name=srv_name,
+                server_host=srv_host,
+                nas_mount_path=srv_mount,
+                total_size_bytes=srv_size,
+                total_size_human=format_size(srv_size),
+                total_file_count=srv_files,
+                sub_apps=sub_app_infos,
+                last_scan_time=(
+                    latest_server_scan.scan_timestamp
+                    if latest_server_scan else None
+                ),
+                scan_type=(
+                    latest_server_scan.scan_type
+                    if latest_server_scan else "unknown"
+                ),
+            )
+            servers.append(server_info)
+            total_size += srv_size
+            total_files += srv_files
 
     return DashboardSummary(
-        total_servers=len(_app_config.servers),
+        total_servers=len(servers),
         total_sub_apps=total_sub_apps,
         total_size_bytes=total_size,
         total_size_human=format_size(total_size),
@@ -1453,4 +1581,208 @@ def get_alert_logs(
             }
             for log in logs
         ]
+    }
+
+
+# ========================================================================
+# Combined Growth / Purge / Forecast chart data for Dashboard
+# Returns time-series data spanning past 1 year to future 5 years
+# with separate series for growth (green), purge (red), forecast (blue)
+# ========================================================================
+
+@router.get("/chart/growth-purge-forecast")
+def get_combined_chart_data(
+    server_name: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Return combined growth, purge, and forecast time-series data
+    for the dashboard chart. Spans past 1 year to future 5 years.
+
+    - Growth (green): historical space snapshots aggregated monthly
+    - Purge (red): estimated purgeable space at each time point
+    - Forecast (dotted blue): projected total space using linear regression
+    """
+    from datetime import timedelta
+    import json
+
+    now = datetime.utcnow()
+    one_year_ago = now - timedelta(days=365)
+
+    # ---- Historical growth data (past 1 year, monthly aggregation) ----
+    snapshots_query = db.query(SpaceSnapshot).filter(
+        SpaceSnapshot.snapshot_timestamp >= one_year_ago,
+    )
+    if server_name:
+        snapshots_query = snapshots_query.filter(
+            SpaceSnapshot.server_name == server_name
+        )
+    snapshots = snapshots_query.order_by(
+        SpaceSnapshot.snapshot_timestamp.asc()
+    ).all()
+
+    # Aggregate by month
+    monthly_totals = {}
+    for snap in snapshots:
+        month_key = snap.snapshot_timestamp.strftime("%Y-%m")
+        if month_key not in monthly_totals:
+            monthly_totals[month_key] = {"size": 0, "count": 0}
+        monthly_totals[month_key]["size"] += snap.total_size_bytes
+        monthly_totals[month_key]["count"] += 1
+    # Average per month (since multiple sub-apps contribute multiple rows)
+    growth_labels = sorted(monthly_totals.keys())
+    growth_values = []
+    for k in growth_labels:
+        avg = monthly_totals[k]["size"] / max(monthly_totals[k]["count"], 1)
+        growth_values.append(avg)
+
+    # ---- Purge eligible data (estimate at each historical point) ----
+    # For each month, estimate how much was purgeable (files > 90 days old)
+    purge_values = []
+    for month_str in growth_labels:
+        # Parse month and estimate purgeable at that point
+        year, month = month_str.split("-")
+        month_date = datetime(int(year), int(month), 15)
+        cutoff = month_date - timedelta(days=90)
+        purge_query = db.query(
+            func.sum(FileMetadata.file_size_bytes)
+        ).filter(
+            FileMetadata.is_deleted == 0,
+            FileMetadata.last_modified < cutoff,
+        )
+        if server_name:
+            purge_query = purge_query.filter(
+                FileMetadata.server_name == server_name
+            )
+        purge_total = purge_query.scalar() or 0
+        purge_values.append(purge_total)
+
+    # ---- Forecast (future 5 years using linear regression) ----
+    # Use the last 3 months of historical data for slope estimation
+    forecast_labels = []
+    forecast_values = []
+    if len(growth_values) >= 2:
+        # Simple linear slope from last data points
+        recent_values = growth_values[-min(6, len(growth_values)):]
+        monthly_growth = 0
+        if len(recent_values) >= 2:
+            monthly_growth = (recent_values[-1] - recent_values[0]) / max(
+                len(recent_values) - 1, 1
+            )
+        last_value = growth_values[-1] if growth_values else 0
+        # Project 60 months into the future (5 years)
+        for i in range(1, 61):
+            future_date = now + timedelta(days=30 * i)
+            forecast_labels.append(future_date.strftime("%Y-%m"))
+            projected = last_value + monthly_growth * i
+            forecast_values.append(max(projected, 0))
+
+    # ---- Purge forecast (projected purgeable space in the future) ----
+    purge_forecast_values = []
+    last_purge = purge_values[-1] if purge_values else 0
+    purge_growth_rate = 0
+    if len(purge_values) >= 2:
+        recent_purge = purge_values[-min(6, len(purge_values)):]
+        purge_growth_rate = (recent_purge[-1] - recent_purge[0]) / max(
+            len(recent_purge) - 1, 1
+        )
+    for i in range(1, 61):
+        projected_purge = last_purge + purge_growth_rate * i
+        purge_forecast_values.append(max(projected_purge, 0))
+
+    return {
+        "labels": growth_labels + forecast_labels,
+        "growth": {
+            "historical_labels": growth_labels,
+            "historical_values": growth_values,
+        },
+        "purge": {
+            "historical_labels": growth_labels,
+            "historical_values": purge_values,
+            "forecast_labels": forecast_labels,
+            "forecast_values": purge_forecast_values,
+        },
+        "forecast": {
+            "labels": forecast_labels,
+            "values": forecast_values,
+        },
+    }
+
+
+# ========================================================================
+# Purge History Summary — shows purgeable amounts at 1w/1m/1y/5y
+# ========================================================================
+
+@router.get("/purge-history-summary")
+def get_purge_history_summary(
+    server_name: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Return purge eligibility summaries for multiple time horizons.
+
+    Shows how much data was/is eligible for purging at:
+    - 1 week (7 days)
+    - 1 month (30 days)
+    - 1 year (365 days)
+    - 5 years (1825 days)
+
+    Also returns monthly purge-eligible totals for chart rendering.
+    """
+    from datetime import timedelta
+
+    now = datetime.utcnow()
+    periods = [
+        {"label": "1 Week", "days": 7},
+        {"label": "1 Month", "days": 30},
+        {"label": "1 Year", "days": 365},
+        {"label": "5 Years", "days": 1825},
+    ]
+
+    summaries = []
+    for period in periods:
+        cutoff = now - timedelta(days=period["days"])
+        query = db.query(
+            func.count(FileMetadata.id),
+            func.sum(FileMetadata.file_size_bytes),
+        ).filter(
+            FileMetadata.is_deleted == 0,
+            FileMetadata.last_modified < cutoff,
+        )
+        if server_name:
+            query = query.filter(FileMetadata.server_name == server_name)
+        result = query.first()
+        count = result[0] or 0
+        total_bytes = result[1] or 0
+        summaries.append({
+            "label": period["label"],
+            "threshold_days": period["days"],
+            "file_count": count,
+            "total_bytes": total_bytes,
+            "total_human": format_size(total_bytes),
+        })
+
+    # Monthly purge-eligible trend (for chart) — last 12 months
+    monthly_purge = []
+    for months_ago in range(12, 0, -1):
+        month_date = now - timedelta(days=30 * months_ago)
+        cutoff = month_date - timedelta(days=90)
+        query = db.query(
+            func.sum(FileMetadata.file_size_bytes)
+        ).filter(
+            FileMetadata.is_deleted == 0,
+            FileMetadata.last_modified < cutoff,
+        )
+        if server_name:
+            query = query.filter(FileMetadata.server_name == server_name)
+        total = query.scalar() or 0
+        monthly_purge.append({
+            "month": month_date.strftime("%Y-%m"),
+            "purgeable_bytes": total,
+            "purgeable_human": format_size(total),
+        })
+
+    return {
+        "summaries": summaries,
+        "monthly_trend": monthly_purge,
     }
