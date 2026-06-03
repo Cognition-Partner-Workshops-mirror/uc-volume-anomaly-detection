@@ -225,13 +225,14 @@ async def signup_submit(
     email: str = Form(...),
     password: str = Form(default=""),
 ):
-    """Handle signup form submission. Default password is welcome123."""
+    """Handle signup form submission. Uses DEFAULT_PASSWORD env var if blank."""
     if not _session_factory:
         return RedirectResponse("/signup?error=System+not+ready", status_code=303)
 
     db = get_session(_session_factory)
-    # Use provided password or default 'welcome123'
-    pw = password if password else "welcome123"
+    # Use provided password or fall back to DEFAULT_PASSWORD from auth_manager
+    from server_space_optimizer.auth.auth_manager import DEFAULT_PASSWORD
+    pw = password if password else DEFAULT_PASSWORD
     user = create_user(db, username, email, password=pw)
 
     if not user:

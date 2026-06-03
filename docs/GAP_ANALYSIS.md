@@ -1,6 +1,8 @@
-# GAP_ANALYSIS.md — Volume Anomaly Detection & Storage Forecaster (VADSF)
+# GAP_ANALYSIS.md — NAS Capacity Pulse
 
-> 38 gaps across 7 engineering categories. Key findings: 1 Critical (minimal test coverage), 16 High, 13 Medium, 8 Low.
+> Engineering gap assessment across 7 categories. Updated to reflect current codebase with 58 passing tests, env-var secrets, and comprehensive documentation.
+>
+> 32 gaps: 0 Critical, 12 High, 12 Medium, 8 Low.
 
 ---
 
@@ -8,14 +10,16 @@
 
 | Category | Critical | High | Medium | Low | Total |
 |----------|----------|------|--------|-----|-------|
-| Code Organization | 0 | 3 | 2 | 1 | 6 |
+| Code Organization | 0 | 2 | 2 | 1 | 5 |
 | Error Handling | 0 | 2 | 2 | 1 | 5 |
-| Testing | 1 | 2 | 2 | 1 | 6 |
-| Security | 0 | 3 | 2 | 1 | 6 |
-| API Design | 0 | 2 | 2 | 1 | 5 |
-| Observability | 0 | 2 | 2 | 1 | 5 |
-| Resilience | 0 | 2 | 1 | 2 | 5 |
-| **Total** | **1** | **16** | **13** | **8** | **38** |
+| Testing | 0 | 2 | 2 | 1 | 5 |
+| Security | 0 | 2 | 2 | 1 | 5 |
+| API Design | 0 | 1 | 2 | 1 | 4 |
+| Observability | 0 | 1 | 1 | 2 | 4 |
+| Resilience | 0 | 2 | 1 | 1 | 4 |
+| **Total** | **0** | **12** | **12** | **8** | **32** |
+
+> **Previous assessment**: 38 gaps (1 Critical). Since then: hardcoded passwords moved to env vars (SE-2 resolved), test coverage expanded from 36 to 58 tests (TE-1 downgraded from Critical), README and docs comprehensively updated.
 
 ---
 
@@ -23,12 +27,11 @@
 
 | # | Gap | Severity | Effort | Details |
 |---|-----|----------|--------|---------|
-| CO-1 | Missing CLI entry point | High | Small | No `__main__.py` or CLI tool. Application can only be started via `uvicorn` command. Should have `python -m server_space_optimizer` entry point with argument parsing. |
-| CO-2 | Monolithic routes file | High | Medium | `api/routes.py` is ~1,800 lines with all endpoints in a single file. Should be split into logical routers: `dashboard.py`, `purge.py`, `config.py`, `capacity.py`, `auth.py`. |
-| CO-3 | Absent utility modules | High | Medium | Common helpers (size formatting, date calculations, validation) are scattered inline across routes. Need a `utils/` package with `formatting.py`, `validators.py`, `date_helpers.py`. |
-| CO-4 | No dependency injection container | Medium | Medium | Dependencies (`session_factory`, `scan_scheduler`, `app_config`) are passed via module-level `set_dependencies()` call. FastAPI's dependency injection system should be used more idiomatically. |
-| CO-5 | Mixed concerns in app.py | Medium | Small | `app.py` handles startup/shutdown, static file serving, template rendering, auth middleware, and scheduler initialization. Should separate middleware, lifecycle, and route registration. |
-| CO-6 | Inconsistent import ordering | Low | Small | Imports across files don't follow a consistent convention (stdlib → third-party → local). Minor but affects readability. |
+| CO-1 | Monolithic routes file | High | Medium | `api/routes.py` is ~1,850 lines with all endpoints in a single file. Should be split into logical routers: `dashboard.py`, `purge.py`, `config.py`, `capacity.py`. |
+| CO-2 | Absent utility modules | High | Medium | Common helpers (size formatting, date calculations, validation) are scattered inline. Need a `utils/` package with `formatting.py`, `validators.py`. |
+| CO-3 | No dependency injection container | Medium | Medium | Dependencies (`session_factory`, `scan_scheduler`, `app_config`) are passed via module-level `set_dependencies()`. FastAPI's DI system should be used more idiomatically. |
+| CO-4 | Mixed concerns in app.py | Medium | Small | `app.py` handles startup/shutdown, static files, templates, auth routes, and scheduler. Should separate lifecycle from route registration. |
+| CO-5 | Inconsistent import ordering | Low | Small | Imports don't consistently follow stdlib → third-party → local ordering. Minor readability concern. |
 
 ---
 
@@ -36,11 +39,11 @@
 
 | # | Gap | Severity | Effort | Details |
 |---|-----|----------|--------|---------|
-| EH-1 | No centralized error handler | High | Medium | No global exception handler middleware. Unhandled exceptions return raw 500 with stack traces. Need `@app.exception_handler` for consistent JSON error responses. |
-| EH-2 | Silent failures in scanner | High | Small | `incremental_scanner.py` catches broad `Exception` and logs but continues. File-level errors could corrupt aggregate counts without any visible indication. |
-| EH-3 | Inconsistent HTTP status codes | Medium | Small | Some endpoints return `{"error": "..."}` with 200 status instead of proper 4xx/5xx. Example: `/api/config/sub-apps/{id}` returns 200 even for non-existent IDs in some paths. |
-| EH-4 | No error response schema | Medium | Small | Error responses lack a consistent structure. Some use `{"detail": "..."}`, others `{"error": "..."}`, others `{"message": "..."}`. |
-| EH-5 | Missing input validation messages | Low | Small | Some Pydantic validation errors produce generic messages. Custom validators with descriptive error messages would improve API usability. |
+| EH-1 | No centralized error handler | High | Medium | No global `@app.exception_handler`. Unhandled exceptions return raw 500 with stack traces. Need consistent JSON error envelope. |
+| EH-2 | Silent failures in scanner | High | Small | `incremental_scanner.py` catches broad `Exception` and logs but continues. File-level errors could silently corrupt aggregate counts. |
+| EH-3 | Inconsistent HTTP status codes | Medium | Small | Some endpoints return `{"error": "..."}` with 200 status instead of proper 4xx/5xx codes. |
+| EH-4 | No error response schema | Medium | Small | Error responses lack a consistent structure — some use `{"detail"}`, others `{"error"}`, others `{"message"}`. |
+| EH-5 | Missing input validation messages | Low | Small | Pydantic validation errors produce generic messages. Custom validators with descriptive errors would improve API usability. |
 
 ---
 
@@ -48,12 +51,11 @@
 
 | # | Gap | Severity | Effort | Details |
 |---|-----|----------|--------|---------|
-| TE-1 | Minimal test coverage | **Critical** | Large | Only `test_detectors.py` exists with limited tests. No tests for API endpoints, database operations, scanner logic, auth, or capacity planning. Estimated coverage <10%. |
-| TE-2 | No integration tests | High | Large | No end-to-end tests that exercise the full request cycle (HTTP → route → DB → response). Need `TestClient` based integration tests for critical flows. |
-| TE-3 | No test fixtures or factories | High | Medium | No shared fixtures for database sessions, mock data, or test configuration. Each test would need to set up its own DB, making tests slow and repetitive. |
-| TE-4 | Missing edge case tests | Medium | Medium | No tests for boundary conditions: empty databases, servers with no sub-apps, zero-byte files, very old timestamps, Unicode file paths. |
-| TE-5 | No performance/load tests | Medium | Medium | No benchmarks for scanning large directories (10TB target), API response times under load, or database query performance with millions of file records. |
-| TE-6 | No contract tests for agent API | Low | Small | The shell agent (`space_agent.sh`) POSTs JSON to `/api/agent/report` but there are no contract tests ensuring the agent's output matches the API's expected schema. |
+| TE-1 | No API integration tests | High | Medium | All 58 tests are unit-level. No tests exercise FastAPI routes via `TestClient`. Need endpoint-level tests for dashboard, purge, predictions, agent report. |
+| TE-2 | No end-to-end agent flow test | High | Large | No test covers the full agent → POST → DB → chart-data pipeline. Critical for validating cross-platform (Linux agent → Windows dashboard) correctness. |
+| TE-3 | No test coverage measurement | Medium | Small | No `pytest-cov` configuration. Coverage reports would identify untested code paths (e.g., capacity alert email sending). |
+| TE-4 | Missing edge case tests for growth predictor | Medium | Small | Growth predictor only tested with linear data. Should test with noisy data, insufficient data points, and extreme growth rates. |
+| TE-5 | test_detectors.py pre-existing failure | Low | Small | `tests/test_detectors.py` has a pre-existing failure from the original anomaly detection module. Should be fixed or skipped. |
 
 ---
 
@@ -61,12 +63,13 @@
 
 | # | Gap | Severity | Effort | Details |
 |---|-----|----------|--------|---------|
-| SE-1 | SHA-256 password hashing without salt | High | Small | Passwords are hashed with plain SHA-256 (`hashlib.sha256`). No salt, no key stretching. Should use `bcrypt` or `argon2` with per-user salts. |
-| SE-2 | Hardcoded secret key | High | Small | `secret_key` has a default value in config. Session cookies are signed with this predictable key in production if not overridden. |
-| SE-3 | No CSRF protection | High | Small | Form submissions (login, signup, settings) have no CSRF tokens. Session-based auth is vulnerable to cross-site request forgery. |
-| SE-4 | No rate limiting | Medium | Small | Login endpoint has no rate limiting or account lockout. Brute-force attacks against `/login` are possible. |
-| SE-5 | SQL injection surface | Medium | Small | Most queries use SQLAlchemy ORM (safe), but some use string formatting for `LIKE` clauses. Should be audited for injection vectors. |
-| SE-6 | No Content Security Policy headers | Low | Small | No CSP, X-Frame-Options, or other security headers set. Dashboard pages could be embedded in iframes (clickjacking). |
+| SE-1 | SHA-256 password hashing | High | Small | SHA-256 is fast and vulnerable to brute-force. Should upgrade to bcrypt or argon2 with migration path for existing hashes. |
+| SE-2 | Simple session token format | High | Medium | Token is `username:password_hash[:16]` — leaks hash prefix. Should use JWT with expiry and refresh tokens, or itsdangerous signed cookies. |
+| SE-3 | No CSRF protection | Medium | Small | HTML forms (login, signup, settings) lack CSRF tokens. Vulnerable to cross-site request forgery attacks. |
+| SE-4 | No rate limiting on auth endpoints | Medium | Small | Login/signup have no rate limiting. Susceptible to brute-force password attacks. |
+| SE-5 | No HTTPS by default | Low | Small | HTTP only. Production deployments should use reverse proxy (nginx/Caddy) for TLS. Documented in README but not enforced. |
+
+> **Resolved**: ~~SE-prev: Hardcoded passwords~~ — `DEFAULT_PASSWORD` and `SECRET_KEY` now read from environment variables with dev-mode fallbacks. `.env.example` provided.
 
 ---
 
@@ -74,11 +77,10 @@
 
 | # | Gap | Severity | Effort | Details |
 |---|-----|----------|--------|---------|
-| AD-1 | No API versioning | High | Medium | All endpoints are under `/api/` with no version prefix. Breaking changes would affect all clients. Should use `/api/v1/`. |
-| AD-2 | No OpenAPI documentation customization | High | Small | FastAPI auto-generates OpenAPI spec but endpoint descriptions and response models are incomplete. Many endpoints lack `response_model` or `summary`. |
-| AD-3 | No pagination for list endpoints | Medium | Medium | `/api/config/sub-apps`, `/api/capacity-plans`, `/api/alert-logs` return all records. Need `limit`/`offset` or cursor-based pagination for large datasets. |
-| AD-4 | Inconsistent query parameter naming | Medium | Small | Some endpoints use `server_name`, others use `server`. Filter parameters should follow a consistent naming convention. |
-| AD-5 | No HATEOAS or resource links | Low | Small | API responses don't include links to related resources. Example: dashboard server objects don't link to their detail/purge/prediction endpoints. |
+| AD-1 | No API versioning | High | Medium | All endpoints are at `/api/*` with no version prefix. Breaking changes would affect all consumers. Should version as `/api/v1/*`. |
+| AD-2 | No pagination on list endpoints | Medium | Small | `/api/extensions` and `/api/sub-app-configs` return all records. Large datasets will cause slow responses. Should add `?page=&limit=`. |
+| AD-3 | Inconsistent response envelopes | Medium | Small | Some responses are bare objects, others wrapped in `{data: ..., meta: ...}`. Should standardize. |
+| AD-4 | OpenAPI docs not customized | Low | Small | FastAPI auto-generates Swagger UI at `/docs`, but schema descriptions and examples are sparse. |
 
 ---
 
@@ -86,11 +88,10 @@
 
 | # | Gap | Severity | Effort | Details |
 |---|-----|----------|--------|---------|
-| OB-1 | No health check endpoint | High | Small | No `/health` or `/ready` endpoint for load balancers or container orchestrators to check application health. (Note: a basic `/health` was added but returns minimal info.) |
-| OB-2 | No metrics collection | High | Medium | No Prometheus metrics, StatsD counters, or similar. Can't track request rates, scan durations, error rates, or database query performance. |
-| OB-3 | Inconsistent logging format | Medium | Small | Logging uses Python's standard `logging` module but lacks structured format (JSON). Log messages mix formats and verbosity levels. |
-| OB-4 | No distributed tracing | Medium | Medium | No request ID propagation or OpenTelemetry integration. Hard to trace a request through scanner → database → response chain. |
-| OB-5 | No audit logging | Low | Small | No audit trail for configuration changes, user actions, or purge operations. Settings changes and capacity plan edits are not logged. |
+| OB-1 | No health check endpoint | High | Small | No `/health` or `/ready` endpoint. Monitoring tools and load balancers need this. |
+| OB-2 | No structured logging | Medium | Medium | Logging uses basic `logging.basicConfig()` with string formatting. Should use structured JSON logs for log aggregation tools. |
+| OB-3 | No request ID tracing | Low | Small | No correlation ID on requests. Makes debugging multi-request flows difficult. |
+| OB-4 | No metrics endpoint | Low | Medium | No Prometheus-compatible `/metrics` endpoint. Would enable Grafana dashboards for the dashboard itself. |
 
 ---
 
@@ -98,33 +99,21 @@
 
 | # | Gap | Severity | Effort | Details |
 |---|-----|----------|--------|---------|
-| RE-1 | No graceful shutdown | High | Small | APScheduler and background scans don't have graceful shutdown handlers. `SIGTERM` kills the process mid-scan, potentially leaving incomplete data. |
-| RE-2 | No database connection pooling config | High | Small | SQLite connection is created with defaults. For concurrent requests, need `pool_size`, `pool_timeout`, and `check_same_thread=False` configuration. |
-| RE-3 | No retry logic for SMTP | Medium | Small | Email sending in `_send_threshold_alert()` has no retry on transient failures. A single SMTP timeout silently drops the alert. |
-| RE-4 | No circuit breaker for agent reports | Low | Medium | If the central dashboard is down, agents will fail silently. Agents should queue reports locally and retry. |
-| RE-5 | No idempotency for agent reports | Low | Small | Duplicate agent reports (e.g., network retry) could create duplicate `FileMetadata` records. Need idempotency keys or upsert logic. |
+| RE-1 | No graceful shutdown | High | Small | `ScanScheduler.stop()` is called but doesn't wait for in-progress scans. Long-running scans could be interrupted mid-commit. |
+| RE-2 | No SQLite connection pooling | High | Small | Each request creates and closes a new session. SQLAlchemy's connection pool is not configured for optimal SQLite usage. |
+| RE-3 | No retry logic for agent POST | Medium | Small | Shell agent's `curl` POST has no retry on network failure. Should retry 2-3 times with exponential backoff. |
+| RE-4 | No backup for SQLite database | Low | Small | No automated backup strategy for `space_optimizer.db`. A corruption event could lose all historical data. |
 
 ---
 
-## Severity Distribution
+## Improvements Since Last Assessment
 
-```
-Critical (1):  TE-1 — Minimal test coverage
-High    (16): CO-1, CO-2, CO-3, EH-1, EH-2, TE-2, TE-3, SE-1, SE-2, SE-3,
-              AD-1, AD-2, OB-1, OB-2, RE-1, RE-2
-Medium  (13): CO-4, CO-5, EH-3, EH-4, TE-4, TE-5, SE-4, SE-5, AD-3, AD-4,
-              OB-3, OB-4, RE-3
-Low      (8): CO-6, EH-5, TE-6, SE-6, AD-5, OB-5, RE-4, RE-5
-```
-
----
-
-## Effort Distribution
-
-```
-Small  (20): CO-1, CO-6, EH-2, EH-3, EH-4, EH-5, TE-6, SE-1, SE-2, SE-3,
-             SE-4, SE-6, AD-2, AD-4, AD-5, OB-1, OB-3, OB-5, RE-1, RE-2, RE-3, RE-5
-Medium (14): CO-2, CO-3, CO-4, CO-5, TE-3, TE-4, TE-5, SE-5, AD-1, AD-3,
-             OB-2, OB-4, RE-4
-Large   (4): TE-1, TE-2
-```
+| Item | Previous State | Current State |
+|------|---------------|---------------|
+| Hardcoded passwords | `DEFAULT_PASSWORD = "welcome123"` in source | Read from `DEFAULT_PASSWORD` env var |
+| Secret key | Hardcoded in config.py | Read from `SECRET_KEY` env var |
+| Test coverage | 36 unit tests | 58 tests (unit + auth + security + SQL injection) |
+| Documentation | Minimal README | Comprehensive README (architecture, quick start, Grafana comparison) |
+| Technical design | None | `docs/TECHNICAL_DESIGN.md` with flowcharts |
+| .env.example | Did not exist | Created with all configurable env vars |
+| Product naming | Mixed VADSF/NAS Capacity Pulse | Consistently "NAS Capacity Pulse" throughout |

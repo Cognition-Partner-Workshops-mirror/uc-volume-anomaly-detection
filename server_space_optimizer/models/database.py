@@ -94,7 +94,7 @@ class User(Base):
     User accounts for login authentication.
 
     Supports username/email login with SHA-256 hashed passwords.
-    Default password for new signups is 'welcome123'.
+    Default password for new signups is sourced from DEFAULT_PASSWORD env var.
     """
     __tablename__ = "users"
 

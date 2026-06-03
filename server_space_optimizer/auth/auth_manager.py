@@ -1,11 +1,13 @@
 """
 Authentication manager for user login, signup, and session handling.
 
-Uses SHA-256 password hashing and cookie-based sessions via itsdangerous.
-Default password for new signups is 'welcome123'.
+Uses SHA-256 password hashing and cookie-based sessions.
+Default password for new signups is read from the DEFAULT_PASSWORD
+environment variable (falls back to 'welcome123' if not set).
 """
 
 import logging
+import os
 from datetime import datetime
 from typing import Optional
 
@@ -15,8 +17,8 @@ from server_space_optimizer.models.database import User, hash_password
 
 logger = logging.getLogger(__name__)
 
-# Default password assigned to new user signups
-DEFAULT_PASSWORD = "welcome123"
+# Default password for new signups — sourced from env var for security
+DEFAULT_PASSWORD = os.environ.get("DEFAULT_PASSWORD", "welcome123")
 
 
 def authenticate_user(

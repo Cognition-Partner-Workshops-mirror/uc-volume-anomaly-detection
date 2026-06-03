@@ -117,10 +117,12 @@ class AppConfig(BaseModel):
         default=0.023,
         description="Storage cost in dollars per GB per month"
     )
-    # Secret key for session cookies (auth)
+    # Secret key for session cookies — read from SECRET_KEY env var in production
     secret_key: str = Field(
-        default="space-optimizer-secret-key-change-in-production",
-        description="Secret key for session management"
+        default_factory=lambda: os.environ.get(
+            "SECRET_KEY", "space-optimizer-dev-key"
+        ),
+        description="Secret key for session management (set SECRET_KEY env var in production)",
     )
 
 

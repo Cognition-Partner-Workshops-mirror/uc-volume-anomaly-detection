@@ -1,6 +1,8 @@
-# KNOWLEDGE_BASE.md — Volume Anomaly Detection & Storage Forecaster (VADSF)
+# KNOWLEDGE_BASE.md — NAS Capacity Pulse
 
 > Full architecture overview, data models, API surface map, business logic inventory, integration points, and build/deployment summary.
+>
+> *Punchline: Volume Anomaly Detection & Storage Forecaster*
 
 ---
 
@@ -8,7 +10,7 @@
 
 ### 1.1 System Components
 
-VADSF follows a **hub-and-spoke** architecture with Linux agents reporting to a central FastAPI dashboard accessible from Windows machines.
+NAS Capacity Pulse follows a **hub-and-spoke** architecture with lightweight Linux agents reporting to a central FastAPI dashboard accessible from any workstation (Windows, macOS, Linux).
 
 ```
 ┌──────────────────────┐     REST/JSON      ┌──────────────────────────────┐
@@ -17,31 +19,33 @@ VADSF follows a **hub-and-spoke** architecture with Linux agents reporting to a 
 │   linux_agent.py)     │                    │   Port 8080                   │
 └──────────────────────┘                    └──────────────────────────────┘
                                                       ▲
-                                               Browser (Windows)
+                                               Browser (Windows/macOS)
 ```
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| **Shell Agent** | Bash (`space_agent.sh`) | Runs on Linux servers using POSIX tools (`du`, `find`, `stat`, `curl`). No Python dependency. |
-| **Python Agent** | Python (`linux_agent.py`) | Optional alternative for servers with Python installed. |
-| **Web Dashboard** | FastAPI + Jinja2 + Bootstrap 5 | Serves REST API and server-rendered HTML pages. |
-| **Database** | SQLite via SQLAlchemy ORM | Stores scan results, file metadata, snapshots, configs, user accounts. |
+| **Shell Agent** | Bash (`space_agent.sh`) | Runs on Linux servers using POSIX tools (`du`, `find`, `stat`, `curl`). No Python/Java dependency. |
+| **Python Agent** | Python (`linux_agent.py`) | Optional alternative for servers with Python installed. Uses `os.walk()` and `urllib.request`. |
+| **Web Dashboard** | FastAPI + Jinja2 + Bootstrap 5 | Serves REST API and server-rendered HTML pages on port 8080. |
+| **Database** | SQLite via SQLAlchemy 2.0 ORM | 8 tables storing scan results, file metadata, snapshots, configs, user accounts, capacity plans, alert logs. |
 | **Scheduler** | APScheduler (BackgroundScheduler) | Triggers incremental scans at configurable intervals (default 60 min). |
-| **Charts** | Chart.js 4.x | Client-side line, pie, bar, and trend charts. |
-| **Authentication** | Session cookies + SHA-256 password hashing | Username/password login with signup. |
+| **Charts** | Chart.js 4.x | Client-side rendering of line, pie, bar, and trend charts with server dropdown and avg volume line. |
+| **Authentication** | Session cookies + SHA-256 password hashing | Username/password login with signup. Default password sourced from `DEFAULT_PASSWORD` env var. |
+| **Capacity Planner** | Per-sub-app capacity models | Daily consumption, growth rate, purge schedule, monthly allocation, 80% threshold email alerts. |
 
 ### 1.2 Communication Patterns
 
-- **Agent → Dashboard**: HTTP POST to `/api/agent/report` with JSON payload containing file metadata.
+- **Agent → Dashboard**: HTTP POST to `/api/agent/report` with JSON payload containing server name, sub-apps, and per-file metadata.
 - **Browser → Dashboard**: Standard HTTP GET/POST/PUT/DELETE for all CRUD operations and page rendering.
-- **Dashboard → SMTP**: Outbound email for capacity threshold alerts.
+- **Dashboard → SMTP**: Outbound email for capacity threshold alerts (when usage ≥ 80% of monthly allocation).
 - **Dashboard → Filesystem**: Direct filesystem access for scanning local/mounted NAS paths during scheduled scans.
 
 ### 1.3 Infrastructure
 
 - **Single-process deployment**: `uvicorn` ASGI server hosts everything (API + static files + templates).
 - **No external dependencies**: SQLite is embedded; no Redis, no message queue, no separate worker processes.
-- **Configuration**: Dual-source — YAML file (`server_config/servers.yaml`) and database (`sub_app_configs` table).
+- **Configuration**: Dual-source — YAML file (`server_config/servers.yaml`) and database (`sub_app_configs` table). Settings UI allows runtime configuration.
+- **Secrets**: `SECRET_KEY` and `DEFAULT_PASSWORD` read from environment variables with dev-mode fallbacks. See `.env.example`.
 
 ---
 
@@ -49,257 +53,205 @@ VADSF follows a **hub-and-spoke** architecture with Linux agents reporting to a 
 
 ### 2.1 Domain: Scanning & Storage
 
-| Entity | Table | Key Fields | Purpose |
-|--------|-------|------------|---------|
-| `ScanResult` | `scan_results` | `server_name`, `sub_app_name`, `scan_timestamp`, `total_size_bytes`, `total_file_count`, `scan_type`, `scan_duration_seconds` | Records each scan execution with aggregate results. |
-| `FileMetadata` | `file_metadata` | `server_name`, `sub_app_name`, `file_path`, `file_size_bytes`, `file_extension`, `last_modified`, `last_accessed`, `created_at`, `is_deleted` | Per-file metadata enabling incremental scanning. Only new/changed files are re-evaluated. |
-| `SpaceSnapshot` | `space_snapshots` | `server_name`, `sub_app_name`, `snapshot_timestamp`, `total_size_bytes`, `total_file_count` | Hourly/daily aggregate snapshots used for growth prediction and trend analysis. |
+| Model | Table | Key Fields | Purpose |
+|-------|-------|-----------|---------|
+| `ScanResult` | `scan_results` | `server_name`, `sub_app_name`, `scan_timestamp`, `total_size_bytes`, `total_file_count`, `total_dir_count`, `scan_type` (full/incremental), `scan_duration_seconds` | Audit trail of every scan execution |
+| `FileMetadata` | `file_metadata` | `server_name`, `sub_app_name`, `file_path`, `file_size_bytes`, `file_extension`, `last_modified`, `last_accessed`, `created_at`, `last_scanned`, `is_deleted` | Per-file records for incremental scanning and purge analysis |
+| `SpaceSnapshot` | `space_snapshots` | `server_name`, `sub_app_name`, `snapshot_timestamp`, `total_size_bytes`, `total_file_count` | Hourly/daily aggregates for linear regression growth prediction |
 
-### 2.2 Domain: Configuration
+### 2.2 Domain: Configuration & Settings
 
-| Entity | Table | Key Fields | Purpose |
-|--------|-------|------------|---------|
-| `SubAppConfigDB` | `sub_app_configs` | `server_name`, `sub_app_name`, `path`, `patterns`, `is_dedicated_mount` | Dynamic sub-app configs added via Settings UI. Merged with YAML config at runtime. |
-| `AppSettings` | `app_settings` | `setting_key`, `setting_value` | Key-value store for cost rate, excluded mounts, SMTP settings. |
-| `SubAppCapacityPlan` | `sub_app_capacity_plans` | `server_name`, `sub_app_name`, `daily_consumption_gb`, `growth_rate_pct`, `purge_schedule_json`, `monthly_allocation_gb`, `alert_threshold_pct`, `contact_email` | Per-team capacity planning with purge schedules and allocation alerts. |
+| Model | Table | Key Fields | Purpose |
+|-------|-------|-----------|---------|
+| `SubAppConfigDB` | `sub_app_configs` | `server_name`, `sub_app_name`, `path`, `patterns`, `is_dedicated_mount` | Dynamic server/sub-app mappings from Settings UI (supplements YAML config) |
+| `AppSettings` | `app_settings` | `setting_key` (unique), `setting_value` | Key-value store for cost rate ($/GB/month), excluded mounts list |
+| `SubAppCapacityPlan` | `sub_app_capacity_plans` | `server_name`, `sub_app_name`, `daily_consumption_gb`, `growth_rate_pct`, `purge_schedule_json`, `monthly_allocation_gb`, `alert_threshold_pct`, `contact_email` | Per-team capacity planning parameters |
 
-### 2.3 Domain: Users & Alerting
+### 2.3 Domain: Users & Alerts
 
-| Entity | Table | Key Fields | Purpose |
-|--------|-------|------------|---------|
-| `User` | `users` | `username`, `email`, `password_hash`, `display_name`, `is_active` | User accounts for login. SHA-256 hashed passwords. Default: `welcome123`. |
-| `AlertLog` | `alert_logs` | `server_name`, `sub_app_name`, `alert_type`, `current_usage_gb`, `allocation_gb`, `usage_pct`, `sent_to_email`, `sent_success` | Tracks threshold alert emails to prevent duplicate notifications (24h cooldown). |
-
-### 2.4 Pydantic Schemas (API Layer)
-
-| Schema | Used By | Fields |
-|--------|---------|--------|
-| `SubAppSpaceInfo` | Dashboard, server space | `sub_app_name`, `total_size_bytes`, `total_size_human`, `file_count`, `dir_count` |
-| `ServerSpaceInfo` | Dashboard | `server_name`, `server_host`, `nas_mount_path`, `total_size_bytes`, `sub_apps[]` |
-| `PurgeCandidate` | Purge report | `file_path`, `file_size_bytes`, `last_modified`, `last_accessed`, `days_since_modified` |
-| `PurgeReport` | Purge report | `threshold_days`, `total_candidates`, `total_reclaimable_bytes`, `candidates[]` |
-| `GrowthPrediction` | Growth forecast | `period`, `predicted_growth_bytes`, `growth_rate_percent`, `confidence`, `data_points_used` |
-| `ServerGrowthReport` | Growth forecast | `server_name`, `sub_app_name`, `current_size_bytes`, `predictions[]`, `historical_data[]` |
-| `ScanStatusResponse` | Scan status | `is_scanning`, `last_scan_time`, `next_scan_time`, `scan_interval_minutes` |
-| `DashboardSummary` | Dashboard | `total_servers`, `total_sub_apps`, `total_size_bytes`, `servers[]` |
-
-### 2.5 Configuration Models (Pydantic)
-
-| Model | Source | Fields |
-|-------|--------|--------|
-| `SubAppConfig` | YAML + API | `name`, `path`, `patterns[]`, `is_dedicated_mount` |
-| `ServerConfig` | YAML + API | `server_name`, `server_host`, `nas_mount_path`, `sub_apps[]` |
-| `AppConfig` | YAML + env | `scan_interval_minutes`, `purge_thresholds_days`, `database_path`, `servers[]`, `excluded_mounts[]`, `cost_per_gb_month`, `secret_key` |
+| Model | Table | Key Fields | Purpose |
+|-------|-------|-----------|---------|
+| `User` | `users` | `username` (unique), `email` (unique), `password_hash` (SHA-256), `display_name`, `is_active`, `last_login` | Login credentials and session metadata |
+| `AlertLog` | `alert_logs` | `server_name`, `sub_app_name`, `alert_type`, `current_usage_gb`, `allocation_gb`, `usage_pct`, `sent_to_email`, `sent_success` | Record of capacity threshold alert emails (24h deduplication) |
 
 ---
 
 ## 3. API Surface Map
 
-All endpoints are prefixed with `/api/`.
+### 3.1 Dashboard & Server Endpoints
 
-### 3.1 Dashboard & Overview
+| Method | Endpoint | Request | Response | Description |
+|--------|----------|---------|----------|-------------|
+| GET | `/api/dashboard` | — | `DashboardSummary` | Aggregate dashboard: all servers, sub-apps, totals. Merges YAML + DB-configured servers. |
+| GET | `/api/servers` | — | `[ServerSpaceInfo]` | List all servers with sub-app breakdown |
+| GET | `/api/server/{name}` | — | `ServerSpaceInfo` | Single server details |
+| GET | `/api/chart-data` | `?server=all` | `{labels, growth, purge, forecast, avg_volume}` | Time-series chart data for combined growth/purge/forecast chart. Server dropdown filtering. |
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/dashboard` | Dashboard summary: all servers, sub-apps, aggregate stats. Merges YAML + DB configs. |
-| `GET` | `/api/chart/growth-purge-forecast` | Combined time-series: growth (past 1yr), purge, forecast (future 5yrs). |
-| `GET` | `/api/cost-estimation` | Current/projected storage costs at configured $/GB rate. |
+### 3.2 Scan Management
 
-### 3.2 Server & Space
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/servers/{server_name}/space` | Space breakdown for a specific server. |
-| `GET` | `/api/servers/{server_name}/history` | Historical space trend data for a server. |
+| Method | Endpoint | Request | Response | Description |
+|--------|----------|---------|----------|-------------|
+| POST | `/api/scan/trigger` | `{force_full: bool}` | `ScanStatusResponse` | Trigger immediate scan (background task) |
+| GET | `/api/scan/status` | — | `ScanStatusResponse` | Current scan status, last scan time, next scheduled |
 
 ### 3.3 Purge Analysis
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/servers/{server_name}/purge` | Purge-eligible files for a server, filtered by threshold. |
-| `GET` | `/api/purge-history-summary` | Purge eligibility at 1w/1m/1y/5y horizons + monthly trend. |
+| Method | Endpoint | Request | Response | Description |
+|--------|----------|---------|----------|-------------|
+| GET | `/api/purge/report` | `?server=&sub_app=&threshold_days=90&limit=50` | `PurgeReport` | Purge eligibility analysis (files ranked by size, largest first) |
+| GET | `/api/purge/summary` | `?server=` | `[PurgeReport]` | Multi-threshold summary (7, 30, 60, 90, 180, 365 days) |
+| DELETE | `/api/purge/delete/{file_id}` | — | `{success, message}` | User-initiated file deletion with confirmation |
+| POST | `/api/purge/delete-bulk` | `{file_ids: [int]}` | `{deleted, failed}` | Bulk purge for selected files |
+| GET | `/api/purge/history` | — | `{weekly, monthly, yearly, five_year}` | Actual purge history summaries |
 
-### 3.4 Growth & Forecasting
+### 3.4 Growth & Forecast
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/servers/{server_name}/predictions` | Growth predictions (weekly/monthly/yearly/5yr) using linear regression. |
-| `GET` | `/api/servers/{server_name}/purge-rate` | Daily/monthly purge rate and net space forecast. |
+| Method | Endpoint | Request | Response | Description |
+|--------|----------|---------|----------|-------------|
+| GET | `/api/predictions/{server}/{sub_app}` | — | `ServerGrowthReport` | Growth forecast (1w/1m/1y/5y) with linear regression |
+| GET | `/api/predictions/cost` | `?server=&sub_app=` | `{current_cost, forecasts}` | Cost projection using configured $/GB/month rate |
 
-### 3.5 Scanning
+### 3.5 File Extension Analytics
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/scan/status` | Current scan status, next scan time, interval. |
-| `POST` | `/api/scan/trigger` | Trigger an immediate scan (runs in background). |
-| `POST` | `/api/agent/report` | Receive scan data from remote Linux agents. |
+| Method | Endpoint | Request | Response | Description |
+|--------|----------|---------|----------|-------------|
+| GET | `/api/extensions` | `?server=&sub_app=` | `[{extension, count, total_size, avg_size, recommendation}]` | Unique extensions with optimization recommendations |
 
-### 3.6 File Extensions
+### 3.6 Configuration CRUD
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/extensions` | Unique file extensions, format descriptions, optimization recommendations. |
+| Method | Endpoint | Request | Response | Description |
+|--------|----------|---------|----------|-------------|
+| GET | `/api/sub-app-configs` | `?server=` | `[SubAppConfigDB]` | List all sub-app configurations |
+| POST | `/api/sub-app-configs` | `{server_name, sub_app_name, path, patterns}` | `SubAppConfigDB` | Create new sub-app config |
+| PUT | `/api/sub-app-configs/{id}` | `{path, patterns, ...}` | `SubAppConfigDB` | Update sub-app config |
+| DELETE | `/api/sub-app-configs/{id}` | — | `{success}` | Delete sub-app config |
+| GET | `/api/servers/list` | — | `[string]` | Dropdown: distinct server names |
+| GET | `/api/sub-apps/list` | `?server=` | `[string]` | Dropdown: distinct sub-app names per server |
 
-### 3.7 Configuration Management
+### 3.7 Capacity Planning
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/config/sub-apps` | List all sub-app configurations from DB. |
-| `POST` | `/api/config/sub-apps` | Create a new sub-app configuration. |
-| `PUT` | `/api/config/sub-apps/{id}` | Update an existing sub-app configuration. |
-| `DELETE` | `/api/config/sub-apps/{id}` | Delete a sub-app configuration. |
-| `GET` | `/api/config/servers` | List all known server names (YAML + DB merged). |
-| `GET` | `/api/config/sub-app-names` | List sub-app names for a given server. |
-| `GET` | `/api/config/excluded-mounts` | Get system-excluded mount paths. |
-| `PUT` | `/api/config/excluded-mounts` | Update excluded mount paths. |
+| Method | Endpoint | Request | Response | Description |
+|--------|----------|---------|----------|-------------|
+| GET | `/api/capacity-plans` | `?server=` | `[SubAppCapacityPlan]` | List capacity plans |
+| POST | `/api/capacity-plans` | `{server_name, sub_app_name, daily_consumption_gb, ...}` | `SubAppCapacityPlan` | Create capacity plan |
+| PUT | `/api/capacity-plans/{id}` | `{...}` | `SubAppCapacityPlan` | Update capacity plan |
+| DELETE | `/api/capacity-plans/{id}` | — | `{success}` | Delete capacity plan |
+| GET | `/api/capacity-plans/status` | — | `[{sub_app, usage_gb, allocation_gb, usage_pct}]` | Current allocation usage status |
+| POST | `/api/capacity-plans/check-alerts` | — | `{alerts_sent, details}` | Check thresholds and send email alerts |
 
 ### 3.8 Settings
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/settings` | Get all application settings (cost rate, SMTP, etc). |
-| `PUT` | `/api/settings/{key}` | Update a single setting. |
+| Method | Endpoint | Request | Response | Description |
+|--------|----------|---------|----------|-------------|
+| GET | `/api/settings/cost-rate` | — | `{cost_per_gb_month}` | Current cost rate |
+| PUT | `/api/settings/cost-rate` | `{cost_per_gb_month}` | `{success}` | Update cost rate |
+| GET | `/api/settings/excluded-mounts` | — | `{mounts: [string]}` | Current excluded mount list |
+| PUT | `/api/settings/excluded-mounts` | `{mounts: [string]}` | `{success}` | Update excluded mounts |
 
-### 3.9 Capacity Planning & Alerting
+### 3.9 Agent Ingestion
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/capacity-plans` | List all capacity plans. |
-| `POST` | `/api/capacity-plans` | Create a new capacity plan. |
-| `PUT` | `/api/capacity-plans/{id}` | Update a capacity plan. |
-| `DELETE` | `/api/capacity-plans/{id}` | Delete a capacity plan. |
-| `GET` | `/api/capacity-plans/status` | Current usage vs allocation for all plans. |
-| `POST` | `/api/capacity-plans/check-alerts` | Check thresholds and send email alerts. |
-| `GET` | `/api/alert-logs` | List alert history. |
+| Method | Endpoint | Request | Response | Description |
+|--------|----------|---------|----------|-------------|
+| POST | `/api/agent/report` | `{server_name, server_host, sub_apps: [{name, total_size_bytes, file_count, files: [...]}]}` | `{status, message}` | Receive scan data from remote shell agents |
 
-### 3.10 Authentication (Page Routes)
+### 3.10 Web UI Pages (HTML)
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/login` | Login page. |
-| `POST` | `/login` | Authenticate user. |
-| `GET` | `/signup` | Signup page. |
-| `POST` | `/signup` | Create new user account. |
-| `GET` | `/logout` | Log out and redirect to login. |
-
-### 3.11 UI Pages
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/` | Dashboard (requires auth). |
-| `GET` | `/purge` | Purge eligibility report. |
-| `GET` | `/predictions` | Growth & forecast page. |
-| `GET` | `/extensions` | File extensions analytics. |
-| `GET` | `/settings` | Settings (sub-app configs, capacity plans, cost rate). |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/login` | No | Login page with product branding |
+| POST | `/login` | No | Login form submission |
+| GET | `/signup` | No | Signup page |
+| POST | `/signup` | No | Signup form submission |
+| GET | `/logout` | No | Clear session cookie |
+| GET | `/` | Yes | Main dashboard page |
+| GET | `/purge` | Yes | Purge eligibility report page |
+| GET | `/predictions` | Yes | Growth & forecast page |
+| GET | `/extensions` | Yes | File extension analytics page |
+| GET | `/settings` | Yes | Server/sub-app config and capacity planning page |
 
 ---
 
-## 4. Key Business Logic Inventory
+## 4. Business Logic Inventory
 
-### 4.1 Incremental Scanning (`scanner/incremental_scanner.py`)
+### 4.1 Incremental Scanning
+- First scan per sub-app: full directory traversal via `scan_directory_recursive()`.
+- Subsequent scans: delta-only via `scan_files_since()` — finds files modified after the last scan timestamp.
+- File metadata (path, size, extension, mtime, atime, ctime) stored in `file_metadata` table.
+- Files not found on local filesystem during scan are NOT auto-deleted — only user-initiated purge.
 
-- **Full scan**: Walks entire directory tree, records every file's metadata.
-- **Incremental scan**: Only processes files modified since `last_scan_time` using `os.stat().st_mtime`.
-- **Deleted file detection**: Marks files as `is_deleted=1` if they no longer exist on disk.
-- **Mount exclusion**: Skips system paths listed in `excluded_mounts` configuration.
+### 4.2 Path Resolution
+Three modes for mapping sub-apps to filesystem paths:
+1. **Relative path**: `path: "billing"` → joined with server's `nas_mount_path`.
+2. **Dedicated mount**: `path: "/mnt/dedicated"` + `is_dedicated_mount: true` → used as-is.
+3. **Glob patterns**: `patterns: ["logs_*"]` → expanded via `glob.glob()` under `nas_mount_path`.
 
-### 4.2 Growth Prediction (`predictor/growth_predictor.py`)
+### 4.3 Growth Prediction
+- Simple linear regression on `space_snapshots` (last 90 days).
+- Uses numpy for `slope`, `intercept`, `R²` computation.
+- Extrapolates to 1 week, 1 month, 1 year, 5 years.
+- R² score returned as `confidence` (0.0 = no trend, 1.0 = perfect fit).
 
-- Uses **linear regression** on `SpaceSnapshot` history to estimate growth rate.
-- Calculates predictions for 4 periods: 1 week, 1 month, 1 year, 5 years.
-- Computes **confidence scores** based on R-squared of the regression fit.
-- Falls back to zero growth if insufficient data points exist.
+### 4.4 Purge Analysis
+- Queries `file_metadata` for files older than threshold (default 90 days).
+- Sorted by `file_size_bytes` descending (largest impact first).
+- Respects `is_deleted` flag — deleted files excluded.
+- Multi-threshold summaries: 7, 30, 60, 90, 180, 365 days.
 
-### 4.3 Purge Analysis (`scanner/purge_analyzer.py`)
+### 4.5 Capacity Planning
+- Per-sub-app parameters: daily consumption (GB), growth rate (%), purge schedule (JSON), monthly allocation (GB).
+- Alert threshold (default 80%): when `current_usage / monthly_allocation ≥ threshold`, email notification triggered.
+- 24-hour deduplication prevents repeat alerts.
 
-- Queries `FileMetadata` for files older than configurable thresholds (7/30/60/90/180/365 days).
-- Returns top-N candidates sorted by file size (default top 50).
-- Supports CSV export for full report download.
-- Calculates reclaimable space per threshold.
+### 4.6 Cost Estimation
+- Configurable rate stored in `app_settings` (default $0.023/GB/month).
+- Applied to current usage and forecast periods.
+- Displayed on dashboard summary cards and forecast page.
 
-### 4.4 Combined Growth/Purge/Forecast Chart (`api/routes.py`)
-
-- **Historical growth**: Aggregates `SpaceSnapshot` records by month for the past 12 months.
-- **Purge eligible**: Estimates purgeable bytes at each historical month (files > 90 days old).
-- **Forecast**: Projects 60 months forward using linear regression slope from recent snapshots.
-- Returns all three series with unified labels for the dashboard Chart.js visualization.
-
-### 4.5 Capacity Planning & Alerting
-
-- Each sub-app has a **capacity plan**: daily consumption, growth rate, purge schedule, monthly allocation.
-- **Purge schedule** is JSON: e.g., `[{"pct": 50, "after_days": 7}, {"pct": 50, "after_days": 30}]`.
-- **80% threshold alert**: When current usage exceeds `alert_threshold_pct` of `monthly_allocation_gb`, an email is sent.
-- **Deduplication**: Alerts are suppressed for 24 hours after last alert for the same sub-app.
-- **SMTP integration**: Sends via `smtplib.SMTP` with configurable host/port/credentials.
-
-### 4.6 Dual Configuration Merging
-
-- Servers can be defined in **YAML** (`server_config/servers.yaml`) and/or added via **Settings UI** (stored in `SubAppConfigDB`).
-- The dashboard endpoint merges both sources: first processes YAML servers, then appends any DB-only servers/sub-apps.
-- All dropdowns across pages use `/api/config/servers` and `/api/config/sub-app-names` to ensure consistency.
-
-### 4.7 Cost Estimation
-
-- Configurable cost rate (default $0.023/GB/month).
-- Calculates current monthly cost and projects for 1 week, 1 month, 1 year, 5 years.
-- Factors in predicted growth from linear regression.
+### 4.7 File Extension Analytics
+- Aggregates `file_extension` from `file_metadata` table.
+- Per-extension: count, total size, average size, format description.
+- Optimization recommendations: compress old `.log` files, archive `.dat`, remove `.tmp`/`.bak`.
 
 ---
 
 ## 5. Integration Points
 
-| Integration | Protocol | Configuration | Purpose |
-|-------------|----------|---------------|---------|
-| **SMTP Email** | SMTP/SMTPS | `smtp_host`, `smtp_port`, `smtp_user`, `smtp_password` in `app_settings` | Threshold alert notifications. |
-| **SQLite Database** | Filesystem | `database_path` in `AppConfig` (default: `space_optimizer.db`) | All persistent storage. |
-| **YAML Config** | Filesystem | `server_config/servers.yaml` | Static server/sub-app definitions. |
-| **Linux Agent** | HTTP REST | Agent POSTs to `/api/agent/report` | Remote file metadata ingestion. |
-| **cron/systemd** | OS service | `space_agent.sh --once` for cron, or daemon mode | Scheduling agent scans on remote servers. |
+| Integration | Type | Details |
+|-------------|------|---------|
+| **Linux Shell Agent** | HTTP POST | `space_agent.sh` POSTs JSON to `/api/agent/report`. Uses `curl`. |
+| **Python Agent** | HTTP POST | `linux_agent.py` uses `urllib.request`. |
+| **SMTP Email** | Outbound | Capacity threshold alerts via `smtplib`. Configurable host/port/credentials. |
+| **Filesystem** | Direct I/O | Scanner reads NAS mounts using `os.walk()`, `os.stat()`, `os.path.getsize()`. |
+| **SQLite** | Embedded DB | Single-file database via SQLAlchemy ORM. No external DB server. |
 
 ---
 
 ## 6. Build & Deployment Summary
 
-### 6.1 Dependencies
-
-All dependencies are open-source:
-- **FastAPI** + **Uvicorn**: ASGI web framework and server.
-- **SQLAlchemy**: ORM for SQLite database.
-- **Pydantic**: Data validation and serialization.
-- **APScheduler**: In-process background task scheduling.
-- **PyYAML**: YAML configuration parsing.
-- **Jinja2**: Server-side HTML template rendering.
-- **Chart.js** (CDN): Client-side charting library.
-- **Bootstrap 5** (CDN): CSS framework.
-
-### 6.2 Running the Application
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Generate demo data (optional)
-python -m server_space_optimizer.scripts.generate_demo_data
-
-# Start the server
-python -m uvicorn server_space_optimizer.app:app --host 0.0.0.0 --port 8080
+### Dependencies
+```
+fastapi, uvicorn, sqlalchemy, pydantic, pyyaml, numpy, apscheduler,
+jinja2, python-multipart, itsdangerous, aiofiles
 ```
 
-### 6.3 Shell Agent Deployment
+### Startup Sequence
+1. `python run.py` → loads `server_config/servers.yaml`
+2. Initializes SQLite database (creates tables if needed)
+3. Generates demo data if no existing data found
+4. Starts APScheduler (60-min interval scan)
+5. Runs initial full scan on startup
+6. Serves FastAPI on `0.0.0.0:8080`
 
-```bash
-# Copy to target Linux server
-scp space_agent.sh agent.conf user@server:/opt/space-agent/
+### Agent Deployment
+- Copy `space_agent.sh` + `agent.conf` to each Linux server
+- Schedule via cron: `*/60 * * * * /opt/space_agent/space_agent.sh --config agent.conf --once`
+- Or run as daemon: `nohup ./space_agent.sh --config agent.conf &`
 
-# One-time scan (for cron)
-./space_agent.sh --once
-
-# Continuous daemon mode
-./space_agent.sh &
-```
-
-### 6.4 Default Credentials
-
-- **Username**: `admin`
-- **Password**: `welcome123`
-- Any new user signing up defaults to `welcome123` if no password is provided.
+### Environment Variables
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `SECRET_KEY` | `space-optimizer-dev-key` | Session cookie signing |
+| `DEFAULT_PASSWORD` | `welcome123` | Default signup password |
+| `HOST` | `0.0.0.0` | Web server bind address |
+| `PORT` | `8080` | Web server port |
+| `CONFIG_PATH` | `server_config/servers.yaml` | Config file path |
