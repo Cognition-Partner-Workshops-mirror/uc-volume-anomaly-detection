@@ -136,9 +136,11 @@
 
 {% block extra_js %}
 <script>
-    // Populate server dropdown on page load
+    // Populate server dropdown and auto-load extension data on page load
     document.addEventListener('DOMContentLoaded', function() {
         populateExtServerDropdown();
+        // Auto-load extensions so users see data immediately
+        loadExtensions();
     });
 
     // Populate the server dropdown for extensions page

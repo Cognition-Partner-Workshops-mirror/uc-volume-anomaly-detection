@@ -18,11 +18,12 @@ let trendChart = null;
 let cachedDashboardData = null;
 
 // ===========================================================
-// Utility: fetch JSON from API with error handling (GET)
+// Utility: fetch JSON from API with error handling.
+// Supports optional fetch options (method, headers, body) for POST/PUT.
 // ===========================================================
-async function apiFetch(url) {
+async function apiFetch(url, options) {
     try {
-        const response = await fetch(url);
+        const response = await fetch(url, options || {});
         if (!response.ok) {
             throw new Error(`API error: ${response.status} ${response.statusText}`);
         }
@@ -473,7 +474,7 @@ async function loadPurgeReport(limit) {
     if (!data.candidates || data.candidates.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" class="text-center text-muted py-4">
+                <td colspan="8" class="text-center text-muted py-4">
                     No purge candidates found for the selected criteria
                 </td>
             </tr>`;
@@ -489,18 +490,28 @@ async function loadPurgeReport(limit) {
         else staleClass = 'stale-warning';
 
         html += `
-            <tr>
+            <tr id="purge-row-${candidate.file_id}">
+                <td><input type="checkbox" class="purge-checkbox" value="${candidate.file_id}" onchange="updatePurgeSelectedCount()"></td>
                 <td>${idx + 1}</td>
                 <td class="file-path-cell" title="${candidate.file_path}">${candidate.file_path}</td>
                 <td><strong>${candidate.file_size_human}</strong></td>
                 <td>${candidate.sub_app_name}</td>
                 <td>${formatDateTime(candidate.last_modified)}</td>
-                <td>${formatDateTime(candidate.last_accessed)}</td>
                 <td class="${staleClass}">${candidate.days_since_modified}d</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger" onclick="purgeSingleFile(${candidate.file_id}, '${candidate.file_path.replace(/'/g, "\\'")}')">
+                        <i class="bi bi-trash3"></i> Delete
+                    </button>
+                </td>
             </tr>`;
     });
 
     tbody.innerHTML = html;
+
+    // Reset select-all checkbox state
+    const selectAll = document.getElementById('purge-select-all');
+    if (selectAll) selectAll.checked = false;
+    updatePurgeSelectedCount();
 }
 
 // ===========================================================

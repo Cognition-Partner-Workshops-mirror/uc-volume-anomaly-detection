@@ -206,24 +206,11 @@ class IncrementalScanner:
                 self.db_session.add(new_meta)
                 new_count += 1
 
-        # Step 2: Detect deleted files by sampling stored paths
-        # For performance on large datasets, check files not scanned recently
-        stale_files = (
-            self.db_session.query(FileMetadata)
-            .filter(
-                FileMetadata.server_name == server_name,
-                FileMetadata.sub_app_name == sub_app_name,
-                FileMetadata.is_deleted == 0,
-                FileMetadata.last_scanned < now,
-            )
-            .all()
-        )
-
-        for file_meta in stale_files:
-            if not os.path.exists(file_meta.file_path):
-                file_meta.is_deleted = 1
-                file_meta.last_scanned = now
-                deleted_count += 1
+        # Step 2: Deletion is now user-initiated only (via Purge Report page).
+        # The scanner no longer auto-marks files as deleted to prevent
+        # accidental data loss — especially for remote/agent-reported data
+        # where paths don't exist on the dashboard machine.
+        # deleted_count remains 0 unless user explicitly purges via UI.
 
         # Step 3: Recalculate totals from database (active files only)
         from sqlalchemy import func
@@ -298,7 +285,8 @@ class IncrementalScanner:
         Scan a sub-application directory, using incremental mode when possible.
 
         Automatically determines whether to do a full or incremental scan
-        based on whether a previous scan exists.
+        based on whether a previous scan exists. Skips scanning entirely if
+        the directory is not locally accessible (remote/agent-reported data).
 
         Args:
             server_name: Name of the server being scanned
@@ -306,6 +294,16 @@ class IncrementalScanner:
             directory_path: Absolute path to the sub-app directory
             force_full: Force a full scan even if incremental is possible
         """
+        # Skip scanning if the directory doesn't exist locally — this means
+        # the data is from a remote Linux agent and shouldn't be re-scanned
+        # from the dashboard machine (prevents accidental data wipe).
+        if not os.path.isdir(directory_path):
+            logger.debug(
+                "Skipping scan for %s/%s: path %s not locally accessible",
+                server_name, sub_app_name, directory_path,
+            )
+            return DirectoryScanResult(directory_path=directory_path)
+
         last_scan_time = self._get_last_scan_time(server_name, sub_app_name)
 
         if last_scan_time is None or force_full:

@@ -157,6 +157,10 @@
                     <span class="badge bg-secondary ms-2" id="purge-showing-count"></span>
                 </span>
                 <div>
+                    <!-- Purge action buttons — user-initiated deletion with confirmation -->
+                    <button class="btn btn-sm btn-danger me-2" id="btn-purge-selected" style="display:none;" onclick="purgeSelectedFiles()">
+                        <i class="bi bi-trash3"></i> Purge Selected (<span id="purge-selected-count">0</span>)
+                    </button>
                     <button class="btn btn-sm btn-outline-info me-2" id="btn-load-all" style="display:none;" onclick="loadAllPurgeCandidates()">
                         <i class="bi bi-list-ul"></i> Load All
                     </button>
@@ -170,18 +174,19 @@
                     <table class="table table-striped table-hover" id="purge-table">
                         <thead class="table-dark">
                             <tr>
+                                <th><input type="checkbox" id="purge-select-all" onclick="toggleSelectAllPurge()" title="Select All"></th>
                                 <th>#</th>
                                 <th>File Path</th>
                                 <th>Size</th>
                                 <th>Sub-App</th>
                                 <th>Last Modified</th>
-                                <th>Last Accessed</th>
                                 <th>Days Stale</th>
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody id="purge-table-body">
                             <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
+                                <td colspan="8" class="text-center text-muted py-4">
                                     Select a server and click Analyze to view purge candidates
                                 </td>
                             </tr>
@@ -251,6 +256,104 @@
      */
     function loadAllPurgeCandidates() {
         loadPurgeReport(99999);
+    }
+
+    /** Toggle select/deselect all purge checkboxes */
+    function toggleSelectAllPurge() {
+        const selectAll = document.getElementById('purge-select-all');
+        const checkboxes = document.querySelectorAll('.purge-checkbox');
+        checkboxes.forEach(cb => { cb.checked = selectAll.checked; });
+        updatePurgeSelectedCount();
+    }
+
+    /** Update the "Purge Selected (N)" button visibility and count */
+    function updatePurgeSelectedCount() {
+        const checked = document.querySelectorAll('.purge-checkbox:checked');
+        const btn = document.getElementById('btn-purge-selected');
+        const countEl = document.getElementById('purge-selected-count');
+        if (btn) btn.style.display = checked.length > 0 ? 'inline-block' : 'none';
+        if (countEl) countEl.textContent = checked.length;
+    }
+
+    /**
+     * Purge a single file — shows confirmation dialog before deleting.
+     * Deletion is user-initiated only; no auto-deletion occurs.
+     */
+    async function purgeSingleFile(fileId, filePath) {
+        const confirmed = confirm(
+            `Are you sure you want to purge this file?\n\n${filePath}\n\nThis action cannot be undone.`
+        );
+        if (!confirmed) return;
+
+        const serverSelect = document.getElementById('purge-server-select');
+        if (!serverSelect || !serverSelect.value) return;
+
+        const resp = await apiFetch(
+            `/api/servers/${encodeURIComponent(serverSelect.value)}/purge-action`,
+            { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ file_ids: [fileId] }) }
+        );
+
+        if (resp && resp.success) {
+            // Remove the purged row from the table with fade-out effect
+            const row = document.getElementById(`purge-row-${fileId}`);
+            if (row) {
+                row.style.transition = 'opacity 0.3s';
+                row.style.opacity = '0';
+                setTimeout(() => row.remove(), 300);
+            }
+            showToast(`Purged successfully: ${filePath.split('/').pop()}`);
+        } else {
+            alert('Purge failed: ' + (resp ? resp.message : 'Unknown error'));
+        }
+    }
+
+    /**
+     * Purge all selected files — shows confirmation dialog listing count.
+     * All deletions require explicit user confirmation.
+     */
+    async function purgeSelectedFiles() {
+        const checked = document.querySelectorAll('.purge-checkbox:checked');
+        if (checked.length === 0) return;
+
+        const fileIds = Array.from(checked).map(cb => parseInt(cb.value));
+        const confirmed = confirm(
+            `Are you sure you want to purge ${fileIds.length} selected file(s)?\n\nThis action cannot be undone.`
+        );
+        if (!confirmed) return;
+
+        const serverSelect = document.getElementById('purge-server-select');
+        if (!serverSelect || !serverSelect.value) return;
+
+        const resp = await apiFetch(
+            `/api/servers/${encodeURIComponent(serverSelect.value)}/purge-action`,
+            { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ file_ids: fileIds }) }
+        );
+
+        if (resp && resp.success) {
+            // Remove purged rows from table
+            fileIds.forEach(id => {
+                const row = document.getElementById(`purge-row-${id}`);
+                if (row) row.remove();
+            });
+            showToast(`Successfully purged ${resp.purged_count} file(s)`);
+            updatePurgeSelectedCount();
+        } else {
+            alert('Purge failed: ' + (resp ? resp.message : 'Unknown error'));
+        }
+    }
+
+    /** Simple toast notification for purge feedback */
+    function showToast(message) {
+        const toast = document.createElement('div');
+        toast.className = 'position-fixed bottom-0 end-0 p-3';
+        toast.style.zIndex = '9999';
+        toast.innerHTML = `
+            <div class="alert alert-success alert-dismissible fade show shadow" role="alert">
+                <i class="bi bi-check-circle"></i> ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
     }
 </script>
 {% endblock %}

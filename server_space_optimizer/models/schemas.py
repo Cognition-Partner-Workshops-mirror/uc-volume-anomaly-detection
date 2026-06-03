@@ -37,6 +37,7 @@ class ServerSpaceInfo(BaseModel):
 
 class PurgeCandidate(BaseModel):
     """A file identified as eligible for purging based on age thresholds."""
+    file_id: int  # Database ID for user-initiated purge actions
     file_path: str
     file_size_bytes: float
     file_size_human: str

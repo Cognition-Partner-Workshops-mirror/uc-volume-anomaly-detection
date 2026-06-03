@@ -384,6 +384,50 @@ def get_purge_report(
         return {"server_name": server_name, "purge_reports": reports}
 
 
+class PurgeActionRequest(BaseModel):
+    """Request body for user-initiated purge action."""
+    file_ids: list[int] = []
+
+
+@router.post("/servers/{server_name}/purge-action")
+def execute_purge_action(
+    server_name: str,
+    body: PurgeActionRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Execute a user-initiated purge (mark files as deleted).
+
+    Accepts a list of file IDs to purge. Only marks files as deleted in the
+    database — actual filesystem deletion is handled by the Linux agent.
+    Requires explicit user confirmation (handled on the frontend).
+    """
+    file_ids = body.file_ids
+
+    if not file_ids:
+        return {"success": False, "message": "No files specified for purge"}
+
+    # Mark the specified files as deleted (user-confirmed purge)
+    purged_count = 0
+    for file_id in file_ids:
+        file_meta = db.query(FileMetadata).filter(
+            FileMetadata.id == file_id,
+            FileMetadata.server_name == server_name,
+            FileMetadata.is_deleted == 0,
+        ).first()
+        if file_meta:
+            file_meta.is_deleted = 1
+            purged_count += 1
+
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Successfully purged {purged_count} file(s)",
+        "purged_count": purged_count,
+    }
+
+
 @router.get("/servers/{server_name}/predictions")
 def get_growth_predictions(
     server_name: str,

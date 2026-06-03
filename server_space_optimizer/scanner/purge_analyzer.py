@@ -90,6 +90,7 @@ class PurgeAnalyzer:
             days_since_modified = (now - file_meta.last_modified).days
             days_since_accessed = (now - file_meta.last_accessed).days
             candidate = PurgeCandidate(
+                file_id=file_meta.id,
                 file_path=file_meta.file_path,
                 file_size_bytes=file_meta.file_size_bytes,
                 file_size_human=format_size(file_meta.file_size_bytes),
