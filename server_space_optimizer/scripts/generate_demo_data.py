@@ -203,33 +203,58 @@ def generate_historical_snapshots(db_session, days_back: int = 90):
     """
     Generate historical space snapshots for growth prediction.
 
-    Creates daily snapshots going back 'days_back' days with a
-    realistic growth trend (slight daily increase with noise).
+    Creates daily snapshots going back 'days_back' days with
+    enterprise-level trends: ~20% annual growth with ~10-15% annual purge,
+    resulting in net ~5-10% annual increase (exponential, never dropping).
     """
+    import math
+
     now = datetime.utcnow()
     total_snapshots = 0
 
+    # Enterprise growth/purge rates per sub-app (annualized)
+    # Net growth = gross_growth - purge_rate => always positive
+    SUB_APP_RATES = {
+        "billing-service":    {"gross_growth_pct": 22, "purge_pct": 12, "base_gb": 8},
+        "payment-gateway":    {"gross_growth_pct": 20, "purge_pct": 10, "base_gb": 6},
+        "application-logs":   {"gross_growth_pct": 25, "purge_pct": 15, "base_gb": 12},
+        "data-warehouse":     {"gross_growth_pct": 18, "purge_pct":  8, "base_gb": 20},
+        "reporting-service":  {"gross_growth_pct": 20, "purge_pct": 11, "base_gb": 10},
+        "batch-processing":   {"gross_growth_pct": 24, "purge_pct": 14, "base_gb": 15},
+        "staging-apps":       {"gross_growth_pct": 15, "purge_pct": 10, "base_gb": 4},
+        "staging-data":       {"gross_growth_pct": 18, "purge_pct": 12, "base_gb": 5},
+    }
+
     for server_name, server_info in DEMO_SERVERS.items():
         for sub_app_name in server_info["sub_apps"]:
-            # Base size with growth trend
-            base_size = random.uniform(5, 50) * 1024 * 1024 * 1024  # 5-50 GB
-            daily_growth = base_size * random.uniform(0.001, 0.005)  # 0.1-0.5%/day
-            base_files = random.randint(5000, 50000)
-            daily_new_files = random.randint(5, 50)
+            rates = SUB_APP_RATES.get(sub_app_name, {
+                "gross_growth_pct": 20, "purge_pct": 12, "base_gb": 10
+            })
+            base_gb = rates["base_gb"]
+            base_size = base_gb * 1024 * 1024 * 1024
+
+            # Daily compounding rate for net growth (growth - purge)
+            net_annual_pct = rates["gross_growth_pct"] - rates["purge_pct"]
+            daily_net_rate = (1 + net_annual_pct / 100) ** (1 / 365) - 1
+
+            base_files = int(base_gb * 100) + random.randint(100, 500)
+            daily_new_files = max(3, int(base_files * daily_net_rate))
 
             for day in range(days_back, 0, -1):
                 ts = now - timedelta(days=day)
-                # Apply growth with noise
-                growth_factor = (days_back - day) * daily_growth
-                noise = random.uniform(-0.02, 0.02) * base_size
-                size = base_size + growth_factor + noise
-                files = base_files + (days_back - day) * daily_new_files
+                elapsed = days_back - day
+
+                # Exponential growth with small daily noise
+                compound = (1 + daily_net_rate) ** elapsed
+                noise = random.uniform(-0.005, 0.005)
+                size = base_size * compound * (1 + noise)
+                files = base_files + elapsed * daily_new_files
 
                 snapshot = SpaceSnapshot(
                     server_name=server_name,
                     sub_app_name=sub_app_name,
                     snapshot_timestamp=ts,
-                    total_size_bytes=max(size, 0),
+                    total_size_bytes=max(int(size), int(base_size * 0.9)),
                     total_file_count=files,
                 )
                 db_session.add(snapshot)
