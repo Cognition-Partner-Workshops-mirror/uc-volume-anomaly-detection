@@ -1645,7 +1645,12 @@ def get_combined_chart_data(
 
     - Growth (green): historical space snapshots aggregated monthly
     - Purge (red): estimated purgeable space at each time point
-    - Forecast (dotted blue): projected total space using linear regression
+    - Forecast (dotted grey): projected total space using linear regression
+    - average_volume: horizontal line value (average of historical growth)
+
+    Fix: aggregation now takes the latest snapshot per server+sub_app per
+    month and sums those, avoiding double-counting when multiple snapshots
+    exist for the same sub-app in a given month.
     """
     from datetime import timedelta
     import json
@@ -1665,20 +1670,26 @@ def get_combined_chart_data(
         SpaceSnapshot.snapshot_timestamp.asc()
     ).all()
 
-    # Aggregate by month
-    monthly_totals = {}
+    # Aggregate by month: take the MAX snapshot per (server, sub_app) per
+    # month and sum those values to get the true total for each month.
+    # Using MAX avoids the drop when live scan sizes are smaller than the
+    # historical demo trajectory data within the same month.
+    monthly_max = {}  # {month_key: {(server, sub_app): max_size}}
     for snap in snapshots:
         month_key = snap.snapshot_timestamp.strftime("%Y-%m")
-        if month_key not in monthly_totals:
-            monthly_totals[month_key] = {"size": 0, "count": 0}
-        monthly_totals[month_key]["size"] += snap.total_size_bytes
-        monthly_totals[month_key]["count"] += 1
-    # Average per month (since multiple sub-apps contribute multiple rows)
-    growth_labels = sorted(monthly_totals.keys())
+        key = (snap.server_name, snap.sub_app_name)
+        if month_key not in monthly_max:
+            monthly_max[month_key] = {}
+        # Keep the maximum size per server+sub_app per month
+        prev = monthly_max[month_key].get(key, 0)
+        monthly_max[month_key][key] = max(prev, snap.total_size_bytes)
+
+    growth_labels = sorted(monthly_max.keys())
     growth_values = []
     for k in growth_labels:
-        avg = monthly_totals[k]["size"] / max(monthly_totals[k]["count"], 1)
-        growth_values.append(avg)
+        # Sum of max size per sub-app gives the true total for that month
+        total = sum(monthly_max[k].values())
+        growth_values.append(total)
 
     # ---- Purge eligible data (estimate at each historical point) ----
     # For each month, estimate how much was purgeable (files > 90 days old)
@@ -1734,6 +1745,12 @@ def get_combined_chart_data(
         projected_purge = last_purge + purge_growth_rate * i
         purge_forecast_values.append(max(projected_purge, 0))
 
+    # ---- Average / expected volume (horizontal reference line) ----
+    # Compute the average of all historical growth values as the baseline
+    avg_volume = (
+        sum(growth_values) / len(growth_values) if growth_values else 0
+    )
+
     return {
         "labels": growth_labels + forecast_labels,
         "growth": {
@@ -1750,6 +1767,8 @@ def get_combined_chart_data(
             "labels": forecast_labels,
             "values": forecast_values,
         },
+        # Average historical volume for the horizontal reference line
+        "average_volume": avg_volume,
     }
 
 

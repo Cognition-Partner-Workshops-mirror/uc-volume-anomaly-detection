@@ -149,8 +149,14 @@
 <div class="row mb-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header" style="background: linear-gradient(135deg, #2c3e50, #4ca1af); color: white;">
-                <i class="bi bi-graph-up-arrow"></i> Growth, Purge &amp; Forecast — Past 1 Year to Future 5 Years
+            <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #2c3e50, #4ca1af); color: white;">
+                <span><i class="bi bi-graph-up-arrow"></i> Growth, Purge &amp; Forecast — Past 1 Year to Future 5 Years</span>
+                <!-- Server dropdown for chart filtering -->
+                <select id="gpf-server-select" class="form-select form-select-sm"
+                    style="width: auto; min-width: 180px; background: rgba(255,255,255,0.15); color: white; border-color: rgba(255,255,255,0.3);"
+                    onchange="onGpfServerChange()">
+                    <option value="">All Servers</option>
+                </select>
             </div>
             <div class="card-body">
                 <div style="height: 400px;">
@@ -161,7 +167,8 @@
                         <span style="color: #1a7a3a;">&#9632;</span> Growth (Actual) &nbsp;&nbsp;
                         <span style="color: #e74c3c;">&#9632;</span> Purge (Actual) &nbsp;&nbsp;
                         <span style="color: #f5a6a6;">&#9632;</span> Purge (Forecast) &nbsp;&nbsp;
-                        <span style="color: #b0b0b0;">&#9632; - -</span> Forecast (Projected)
+                        <span style="color: #b0b0b0;">&#9632; - -</span> Forecast (Projected) &nbsp;&nbsp;
+                        <span style="color: #ff9800;">— —</span> Avg. Volume
                     </small>
                 </div>
             </div>
@@ -198,6 +205,27 @@
         setInterval(loadDashboardCost, 120000);
     });
 
+    /**
+     * Populate the chart server dropdown once dashboard data is loaded.
+     * Called from buildServerFilterCheckboxes after servers are known.
+     */
+    function populateGpfServerDropdown(servers) {
+        const sel = document.getElementById('gpf-server-select');
+        if (!sel) return;
+        // Keep "All Servers" option, then add each server
+        sel.innerHTML = '<option value="">All Servers</option>';
+        servers.forEach(s => {
+            sel.innerHTML += `<option value="${s.server_name}">${s.server_name}</option>`;
+        });
+    }
+
+    /** Handle chart server dropdown change — re-render the chart */
+    function onGpfServerChange() {
+        const sel = document.getElementById('gpf-server-select');
+        const serverName = sel ? sel.value : null;
+        renderCombinedGrowthPurgeChart(serverName || null);
+    }
+
     // Fetch and display cost estimation on the dashboard
     async function loadDashboardCost() {
         const data = await apiFetch('/api/cost-estimation');
@@ -214,6 +242,9 @@
         if (!container) return;
 
         allDashboardServers = servers;
+
+        // Populate the chart server dropdown with available servers
+        populateGpfServerDropdown(servers);
 
         // On first load, select all servers
         if (selectedServers.size === 0) {
