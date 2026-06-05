@@ -112,6 +112,20 @@ class AppConfig(BaseModel):
             "Only user-defined data mounts will be scanned."
         ),
     )
+    # File/folder exclusion patterns — glob patterns to skip during scanning
+    exclusion_patterns: list[str] = Field(
+        default=[
+            "*.swp", "*.swo", ".DS_Store", "Thumbs.db",
+            "__pycache__", "*.pyc", "node_modules",
+            ".git", ".svn", ".hg",
+            "*.tmp", "*.temp", "*.bak", "*.old",
+            "core.*", "*.core",
+        ],
+        description=(
+            "Glob patterns for files/folders to exclude from scanning. "
+            "Supports wildcards (*, ?) and can match file names or extensions."
+        ),
+    )
     # Cost estimation: dollars per GB per month
     cost_per_gb_month: float = Field(
         default=0.023,

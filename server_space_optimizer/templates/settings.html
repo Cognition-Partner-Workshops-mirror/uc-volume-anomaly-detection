@@ -73,9 +73,9 @@
     </div>
 </div>
 
-<!-- Cost & Global Settings -->
+<!-- Cost & Global Settings — three-column layout: cost, excluded mounts, exclusion patterns -->
 <div class="row mb-4">
-    <div class="col-md-6 mb-3">
+    <div class="col-md-4 mb-3">
         <div class="card widget-collapsible">
             <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white;">
                 <span><i class="bi bi-currency-dollar"></i> Cost Estimation Settings</span>
@@ -99,7 +99,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-6 mb-3">
+    <div class="col-md-4 mb-3">
         <div class="card widget-collapsible">
             <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #e74c3c, #c0392b); color: white;">
                 <span><i class="bi bi-shield-exclamation"></i> Excluded System Mounts</span>
@@ -117,6 +117,29 @@
                     <i class="bi bi-save"></i> Save Exclusions
                 </button>
                 <span id="mounts-save-status" class="ms-2 text-success" style="display:none;">Saved!</span>
+            </div>
+        </div>
+    </div>
+    <!-- Exclusion Patterns widget — glob patterns for files/folders to skip during scanning -->
+    <div class="col-md-4 mb-3">
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #e67e22, #d35400); color: white;">
+                <span><i class="bi bi-funnel"></i> Exclusion Patterns</span>
+                <button class="btn btn-sm btn-outline-light widget-collapse-btn" onclick="toggleWidget(this)">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
+            </div>
+            <div class="card-body widget-body">
+                <div class="mb-3">
+                    <label for="exclusion-patterns" class="form-label fw-semibold">File/Folder Exclusion Patterns</label>
+                    <textarea class="form-control" id="exclusion-patterns" rows="4"
+                        placeholder="*.swp, *.tmp, __pycache__, node_modules, .git"></textarea>
+                    <small class="text-muted">Comma-separated glob patterns (e.g., *.tmp, *.bak, __pycache__) to skip during scans</small>
+                </div>
+                <button class="btn btn-warning text-white" onclick="saveExclusionPatterns()">
+                    <i class="bi bi-save"></i> Save Patterns
+                </button>
+                <span id="patterns-save-status" class="ms-2 text-success" style="display:none;">Saved!</span>
             </div>
         </div>
     </div>
@@ -527,6 +550,12 @@
         if (mountsInput && data.settings.excluded_mounts) {
             mountsInput.value = data.settings.excluded_mounts;
         }
+
+        // Set exclusion patterns textarea — glob patterns for files/folders to skip
+        const patternsInput = document.getElementById('exclusion-patterns');
+        if (patternsInput && data.settings.exclusion_patterns) {
+            patternsInput.value = data.settings.exclusion_patterns;
+        }
     }
 
     // Save cost rate setting
@@ -560,6 +589,23 @@
 
         if (response.ok) {
             const status = document.getElementById('mounts-save-status');
+            if (status) { status.style.display = 'inline'; setTimeout(() => status.style.display = 'none', 2000); }
+        }
+    }
+
+    // Save exclusion patterns setting — glob patterns for files/folders to skip
+    async function saveExclusionPatterns() {
+        const patternsInput = document.getElementById('exclusion-patterns');
+        if (!patternsInput) return;
+
+        const response = await fetch('/api/settings/exclusion_patterns', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value: patternsInput.value }),
+        });
+
+        if (response.ok) {
+            const status = document.getElementById('patterns-save-status');
             if (status) { status.style.display = 'inline'; setTimeout(() => status.style.display = 'none', 2000); }
         }
     }

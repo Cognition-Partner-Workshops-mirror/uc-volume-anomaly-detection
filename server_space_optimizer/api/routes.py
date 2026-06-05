@@ -1507,6 +1507,11 @@ def get_settings(db: Session = Depends(get_db)):
         result["excluded_mounts"] = ",".join(
             _app_config.excluded_mounts if _app_config else []
         )
+    # Include default exclusion patterns if not overridden
+    if "exclusion_patterns" not in result:
+        result["exclusion_patterns"] = ",".join(
+            _app_config.exclusion_patterns if _app_config else []
+        )
 
     return {"settings": result}
 
@@ -1582,6 +1587,52 @@ def update_excluded_mounts(
 
     db.commit()
     return {"status": "updated", "excluded_mounts": update.value.split(",")}
+
+
+# ========================================================================
+# Exclusion Patterns API — glob patterns to skip during scanning
+# ========================================================================
+
+@router.get("/config/exclusion-patterns")
+def get_exclusion_patterns(db: Session = Depends(get_db)):
+    """Get the list of file/folder exclusion patterns (glob-style)."""
+    # Check DB override first
+    setting = db.query(AppSettings).filter(
+        AppSettings.setting_key == "exclusion_patterns"
+    ).first()
+
+    if setting and setting.setting_value:
+        patterns = [p.strip() for p in setting.setting_value.split(",") if p.strip()]
+    else:
+        # Fall back to config defaults
+        patterns = _app_config.exclusion_patterns if _app_config else []
+
+    return {"exclusion_patterns": patterns}
+
+
+@router.put("/config/exclusion-patterns")
+def update_exclusion_patterns(
+    update: SettingUpdate,
+    db: Session = Depends(get_db),
+):
+    """Update the list of file/folder exclusion patterns."""
+    existing = db.query(AppSettings).filter(
+        AppSettings.setting_key == "exclusion_patterns"
+    ).first()
+
+    if existing:
+        existing.setting_value = update.value
+        existing.updated_at = datetime.utcnow()
+    else:
+        new_setting = AppSettings(
+            setting_key="exclusion_patterns",
+            setting_value=update.value,
+            updated_at=datetime.utcnow(),
+        )
+        db.add(new_setting)
+
+    db.commit()
+    return {"status": "updated", "exclusion_patterns": update.value.split(",")}
 
 
 # ========================================================================
