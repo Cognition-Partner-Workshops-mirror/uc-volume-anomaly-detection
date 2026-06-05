@@ -91,8 +91,8 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
-                        <h6 class="card-subtitle mb-1">Unwanted Files</h6>
-                        <h2 class="card-title mb-0" id="ext-unwanted-count">0</h2>
+                        <h6 class="card-subtitle mb-1">Unacceptable Files</h6>
+                        <h2 class="card-title mb-0" id="ext-unacceptable-count">0</h2>
                     </div>
                     <i class="bi bi-x-octagon display-4"></i>
                 </div>
@@ -101,22 +101,22 @@
     </div>
 </div>
 
-<!-- Unwanted Files by Sub-App Chart (multiple value bar chart) -->
+<!-- Unacceptable Files by Sub-App Chart (multiple value bar chart) -->
 <div class="row mb-4" id="ext-chart-section" style="display: none;">
     <div class="col-12">
         <div class="card widget-collapsible">
             <div class="card-header d-flex justify-content-between align-items-center"
                  style="background: linear-gradient(135deg, #e74c3c, #c0392b); color: white;">
-                <span><i class="bi bi-bar-chart"></i> Unwanted Files by Sub-Application — Size & Count</span>
+                <span><i class="bi bi-bar-chart"></i> Unacceptable Files by Sub-Application — Size & Count</span>
                 <button class="btn btn-sm btn-outline-light widget-collapse-btn" onclick="toggleWidget(this)">
                     <i class="bi bi-chevron-up"></i>
                 </button>
             </div>
             <div class="card-body widget-body">
                 <div style="height: 350px;">
-                    <canvas id="unwanted-subapp-chart"></canvas>
+                    <canvas id="unacceptable-subapp-chart"></canvas>
                 </div>
-                <small class="text-muted">Shows which sub-app teams are creating the most unwanted/optimizable files</small>
+                <small class="text-muted">Shows which sub-app teams are creating the most unacceptable/optimizable files</small>
             </div>
         </div>
     </div>
@@ -206,8 +206,8 @@
 
 {% block extra_js %}
 <script>
-    // Chart instance for unwanted files bar chart
-    let unwantedChart = null;
+    // Chart instance for unacceptable files bar chart
+    let unacceptableChart = null;
 
     // Populate dropdowns and auto-load on page load
     document.addEventListener('DOMContentLoaded', function() {
@@ -272,12 +272,12 @@
         let totalTypes = new Set();
         let withRecs = 0;
         let highPriority = 0;
-        let totalUnwanted = 0;
+        let totalUnacceptable = 0;
 
         for (const sa of data.sub_apps) {
             for (const ext of sa.extensions) {
                 totalTypes.add(ext.extension);
-                if (ext.is_unwanted) totalUnwanted += ext.file_count;
+                if (ext.is_unacceptable) totalUnacceptable += ext.file_count;
             }
         }
 
@@ -301,45 +301,45 @@
         updateElement('ext-total-types', formatNumber(totalTypes.size));
         updateElement('ext-with-recs', formatNumber(withRecs));
         updateElement('ext-high-priority', formatNumber(highPriority));
-        updateElement('ext-unwanted-count', formatNumber(totalUnwanted));
+        updateElement('ext-unacceptable-count', formatNumber(totalUnacceptable));
 
         // Render recommendations panel
         renderRecommendations(allRecs);
 
-        // Render unwanted files chart
-        renderUnwantedChart(data.unwanted_by_sub_app);
+        // Render unacceptable files chart
+        renderUnacceptableChart(data.unacceptable_by_sub_app);
 
         // Render table with sub-app breakdown
         renderExtensionsTable(data.sub_apps);
     }
 
-    // Render the multiple-value bar chart for unwanted files by sub-app
-    function renderUnwantedChart(unwantedData) {
+    // Render the multiple-value bar chart for unacceptable files by sub-app
+    function renderUnacceptableChart(unacceptableData) {
         const section = document.getElementById('ext-chart-section');
         if (!section) return;
 
-        if (!unwantedData || unwantedData.length === 0) {
+        if (!unacceptableData || unacceptableData.length === 0) {
             section.style.display = 'none';
             return;
         }
         section.style.display = 'block';
 
-        const ctx = document.getElementById('unwanted-subapp-chart');
+        const ctx = document.getElementById('unacceptable-subapp-chart');
         if (!ctx) return;
 
-        if (unwantedChart) unwantedChart.destroy();
+        if (unacceptableChart) unacceptableChart.destroy();
 
-        const labels = unwantedData.map(d => d.sub_app_name);
-        const sizeData = unwantedData.map(d => d.unwanted_size_bytes / (1024*1024)); // MB
-        const countData = unwantedData.map(d => d.unwanted_file_count);
+        const labels = unacceptableData.map(d => d.sub_app_name);
+        const sizeData = unacceptableData.map(d => d.unacceptable_size_bytes / (1024*1024)); // MB
+        const countData = unacceptableData.map(d => d.unacceptable_file_count);
 
-        unwantedChart = new Chart(ctx, {
+        unacceptableChart = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels: labels,
                 datasets: [
                     {
-                        label: 'Unwanted File Size (MB)',
+                        label: 'Unacceptable File Size (MB)',
                         data: sizeData,
                         backgroundColor: 'rgba(231, 76, 60, 0.7)',
                         borderColor: '#e74c3c',
@@ -347,7 +347,7 @@
                         yAxisID: 'y',
                     },
                     {
-                        label: 'Unwanted File Count',
+                        label: 'Unacceptable File Count',
                         data: countData,
                         backgroundColor: 'rgba(52, 152, 219, 0.7)',
                         borderColor: '#3498db',
@@ -422,10 +422,10 @@
         for (const sa of subApps) {
             for (const ext of sa.extensions) {
                 idx++;
-                const unwantedBadge = ext.is_unwanted
-                    ? ' <span class="badge bg-danger">unwanted</span>' : '';
+                const unacceptableBadge = ext.is_unacceptable
+                    ? ' <span class="badge bg-danger">unacceptable</span>' : '';
                 // Tips button — clickable to show recommendations
-                const tipsBtn = ext.is_unwanted
+                const tipsBtn = ext.is_unacceptable
                     ? `<button class="btn btn-sm btn-outline-warning" onclick="showTips('${ext.extension}', '${sa.server_name}', '${sa.sub_app_name}')"><i class="bi bi-lightbulb"></i> View</button>`
                     : '<span class="badge bg-secondary">OK</span>';
 
@@ -433,7 +433,7 @@
                     + '<td>' + idx + '</td>'
                     + '<td><small class="text-muted">' + sa.server_name + '</small></td>'
                     + '<td><strong>' + sa.sub_app_name + '</strong></td>'
-                    + '<td><strong>' + ext.extension + '</strong>' + unwantedBadge + '</td>'
+                    + '<td><strong>' + ext.extension + '</strong>' + unacceptableBadge + '</td>'
                     + '<td>' + ext.format + '</td>'
                     + '<td>' + formatNumber(ext.file_count) + '</td>'
                     + '<td><strong>' + ext.total_size_human + '</strong></td>'

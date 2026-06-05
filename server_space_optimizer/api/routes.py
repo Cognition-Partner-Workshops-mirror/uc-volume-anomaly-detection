@@ -949,7 +949,7 @@ def get_extensions_by_sub_app(
             }
         ext_lower = (row.file_extension or "").lower()
         format_desc = EXTENSION_FORMATS.get(ext_lower, "Unknown Format")
-        # Check if this extension is considered unwanted based on optimization rules
+        # Check if this extension is considered unacceptable based on optimization rules
         is_unwanted = False
         for rule in OPTIMIZATION_RULES:
             if ext_lower in rule["extensions"] and rule["severity"] in ("high", "medium"):
@@ -962,33 +962,33 @@ def get_extensions_by_sub_app(
             "total_size_bytes": row.total_size or 0,
             "total_size_human": format_size(row.total_size or 0),
             "avg_size_human": format_size(row.avg_size or 0),
-            "is_unwanted": is_unwanted,
+            "is_unacceptable": is_unwanted,
         })
         sub_app_data[key]["total_size"] += (row.total_size or 0)
         sub_app_data[key]["total_files"] += row.file_count
 
-    # Build unwanted files summary per sub-app for the bar chart
-    unwanted_by_sub_app = []
+    # Build unacceptable files summary per sub-app for the bar chart
+    unacceptable_by_sub_app = []
     for key, data in sub_app_data.items():
-        unwanted_size = sum(e["total_size_bytes"] for e in data["extensions"] if e["is_unwanted"])
-        unwanted_count = sum(e["file_count"] for e in data["extensions"] if e["is_unwanted"])
-        unwanted_by_sub_app.append({
+        unacceptable_size = sum(e["total_size_bytes"] for e in data["extensions"] if e["is_unacceptable"])
+        unacceptable_count = sum(e["file_count"] for e in data["extensions"] if e["is_unacceptable"])
+        unacceptable_by_sub_app.append({
             "server_name": data["server_name"],
             "sub_app_name": data["sub_app_name"],
-            "unwanted_size_bytes": unwanted_size,
-            "unwanted_size_human": format_size(unwanted_size),
-            "unwanted_file_count": unwanted_count,
+            "unacceptable_size_bytes": unacceptable_size,
+            "unacceptable_size_human": format_size(unacceptable_size),
+            "unacceptable_file_count": unacceptable_count,
             "total_size_bytes": data["total_size"],
             "total_size_human": format_size(data["total_size"]),
             "total_files": data["total_files"],
         })
 
-    # Sort unwanted by size descending
-    unwanted_by_sub_app.sort(key=lambda x: x["unwanted_size_bytes"], reverse=True)
+    # Sort unacceptable by size descending
+    unacceptable_by_sub_app.sort(key=lambda x: x["unacceptable_size_bytes"], reverse=True)
 
     return {
         "sub_apps": list(sub_app_data.values()),
-        "unwanted_by_sub_app": unwanted_by_sub_app,
+        "unacceptable_by_sub_app": unacceptable_by_sub_app,
         "total_sub_apps": len(sub_app_data),
     }
 
@@ -1213,6 +1213,128 @@ def permanently_delete_archives(
         "success": True,
         "message": f"Permanently deleted {deleted_count} archive(s)",
         "deleted_count": deleted_count,
+    }
+
+
+# ========================================================================
+# Duplicate / Identical Files Detection
+# Finds files with the same name and size across different locations,
+# allowing users to select and delete redundant copies one at a time.
+# ========================================================================
+
+
+class DuplicateDeleteRequest(BaseModel):
+    """Request body for deleting a single duplicate file."""
+    file_id: int
+
+
+@router.get("/duplicates")
+def get_duplicate_files(
+    server_name: Optional[str] = Query(None, description="Filter by server"),
+    db: Session = Depends(get_db),
+):
+    """
+    Detect duplicate/identical files occupying unnecessary space.
+
+    Groups files by (filename, size) and returns groups with 2+ copies.
+    Each file includes owner, age, and size to help users choose which to delete.
+    """
+    import os as _os
+    from datetime import datetime as _dt
+
+    # Base query: active (non-deleted) files
+    query = db.query(FileMetadata).filter(FileMetadata.is_deleted == 0)
+    if server_name:
+        query = query.filter(FileMetadata.server_name == server_name)
+
+    # Extract filename from path for grouping
+    all_files = query.all()
+
+    # Group by (filename, file_size_bytes) to find duplicates
+    groups = {}
+    for f in all_files:
+        fname = _os.path.basename(f.file_path)
+        key = (fname, int(f.file_size_bytes))
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(f)
+
+    # Keep only groups with 2+ files (actual duplicates)
+    duplicate_groups = []
+    total_wasted = 0
+    for (fname, fsize), files in groups.items():
+        if len(files) < 2:
+            continue
+        # Wasted space = (copies - 1) * file_size
+        wasted = (len(files) - 1) * fsize
+        total_wasted += wasted
+
+        group_files = []
+        for f in files:
+            # Calculate file age in days from last_modified
+            age_days = (_dt.utcnow() - f.last_modified).days if f.last_modified else 0
+            # Owner derived from sub_app_name (team/owner context)
+            group_files.append({
+                "file_id": f.id,
+                "file_path": f.file_path,
+                "file_name": fname,
+                "file_size_bytes": int(f.file_size_bytes),
+                "file_size_human": format_size(f.file_size_bytes),
+                "owner": f.sub_app_name,
+                "server_name": f.server_name,
+                "age_days": age_days,
+                "last_modified": f.last_modified.isoformat() if f.last_modified else None,
+            })
+
+        duplicate_groups.append({
+            "file_name": fname,
+            "file_size_bytes": fsize,
+            "file_size_human": format_size(fsize),
+            "copies": len(files),
+            "wasted_bytes": wasted,
+            "wasted_human": format_size(wasted),
+            "files": group_files,
+        })
+
+    # Sort by wasted space descending (biggest waste first)
+    duplicate_groups.sort(key=lambda g: g["wasted_bytes"], reverse=True)
+
+    return {
+        "duplicate_groups": duplicate_groups,
+        "total_groups": len(duplicate_groups),
+        "total_wasted_bytes": total_wasted,
+        "total_wasted_human": format_size(total_wasted),
+    }
+
+
+@router.post("/duplicates/delete")
+def delete_duplicate_file(
+    body: DuplicateDeleteRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Delete a single duplicate file chosen by the user via radio button.
+
+    Only one file can be deleted at a time to prevent accidental bulk removal.
+    Marks the file as deleted (soft-delete) rather than physical removal.
+    """
+    file_record = db.query(FileMetadata).filter(
+        FileMetadata.id == body.file_id,
+        FileMetadata.is_deleted == 0,
+    ).first()
+
+    if not file_record:
+        return {"success": False, "message": "File not found or already deleted"}
+
+    # Soft-delete: mark as deleted so it no longer appears in reports
+    file_record.is_deleted = 1
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Deleted: {file_record.file_path}",
+        "deleted_file_id": file_record.id,
+        "deleted_file_path": file_record.file_path,
     }
 
 

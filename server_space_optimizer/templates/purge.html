@@ -274,6 +274,74 @@
         </div>
     </div>
 </div>
+<!-- Duplicate / Identical Files Widget — detects files occupying unnecessary space -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 style="background: linear-gradient(135deg, #8e44ad, #9b59b6); color: white;">
+                <span><i class="bi bi-files"></i> Duplicate / Identical Files — Wasted Space</span>
+                <div>
+                    <button class="btn btn-sm btn-outline-light" onclick="loadDuplicates()">
+                        <i class="bi bi-arrow-repeat"></i> Refresh
+                    </button>
+                    <button class="btn btn-sm btn-outline-light widget-collapse-btn ms-2" onclick="toggleWidget(this)">
+                        <i class="bi bi-chevron-up"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body widget-body">
+                <!-- Duplicate summary stats -->
+                <div class="row mb-3" id="dup-summary" style="display:none;">
+                    <div class="col-md-4">
+                        <div class="p-2 bg-light rounded text-center">
+                            <small class="text-muted">Duplicate Groups</small>
+                            <h5 class="mb-0" id="dup-total-groups">0</h5>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-2 bg-light rounded text-center">
+                            <small class="text-muted">Wasted Space</small>
+                            <h5 class="mb-0 text-danger" id="dup-wasted-space">0 B</h5>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="p-2 bg-light rounded text-center">
+                            <small class="text-muted">Action</small>
+                            <h5 class="mb-0">
+                                <small class="text-muted">Select one file per group to delete</small>
+                            </h5>
+                        </div>
+                    </div>
+                </div>
+                <!-- Duplicate files table — radio buttons for single selection per group -->
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover" id="dup-table">
+                        <thead class="table-dark">
+                            <tr>
+                                <th style="width:50px;">Select</th>
+                                <th>File Name</th>
+                                <th>File Path</th>
+                                <th>Owner (Sub-App)</th>
+                                <th>Age (Days)</th>
+                                <th>Size</th>
+                                <th>Server</th>
+                                <th style="width:100px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dup-table-body">
+                            <tr>
+                                <td colspan="8" class="text-center text-muted py-4">
+                                    Loading duplicate file analysis…
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -281,10 +349,11 @@
     // Track total candidate count for "Load All" button visibility
     let purgeFullCount = 0;
 
-    // Populate server dropdown and load archives on page load
+    // Populate server dropdown, load archives and duplicate analysis on page load
     document.addEventListener('DOMContentLoaded', function() {
         populateServerDropdowns();
         loadArchives();
+        loadDuplicates();
     });
 
     /** Set the threshold dropdown and re-run the purge report */
@@ -512,6 +581,111 @@
         if (resp && resp.success) {
             showToast(`Permanently deleted ${resp.deleted_count} archive(s)`);
             loadArchives();
+        }
+    }
+
+    // ====== Duplicate Files Widget Functions ======
+
+    /** Load duplicate/identical files from the API */
+    async function loadDuplicates() {
+        const data = await apiFetch('/api/duplicates');
+        if (!data) return;
+
+        // Update summary stats
+        const summary = document.getElementById('dup-summary');
+        if (summary) summary.style.display = data.total_groups > 0 ? 'flex' : 'none';
+
+        updateElement('dup-total-groups', formatNumber(data.total_groups));
+        updateElement('dup-wasted-space', data.total_wasted_human);
+
+        const tbody = document.getElementById('dup-table-body');
+        if (!tbody) return;
+
+        if (!data.duplicate_groups || data.duplicate_groups.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No duplicate files detected. All files are unique.</td></tr>';
+            return;
+        }
+
+        // Render duplicate groups — each group shares a radio button name
+        let html = '';
+        data.duplicate_groups.forEach((group, gIdx) => {
+            // Group header row showing the duplicate file name and total copies
+            html += `<tr class="table-warning">
+                <td colspan="8">
+                    <strong><i class="bi bi-files"></i> ${group.file_name}</strong>
+                    <span class="badge bg-danger ms-2">${group.copies} copies</span>
+                    <span class="badge bg-secondary ms-1">${group.file_size_human} each</span>
+                    <span class="text-danger ms-2"><small>Wasted: ${group.wasted_human}</small></span>
+                </td>
+            </tr>`;
+
+            // Individual file rows within the group — radio buttons share same name per group
+            group.files.forEach((file) => {
+                html += `<tr id="dup-row-${file.file_id}">
+                    <td class="text-center">
+                        <input type="radio" name="dup-group-${gIdx}" class="form-check-input"
+                               value="${file.file_id}" onchange="onDupRadioChange(${gIdx})">
+                    </td>
+                    <td><small>${file.file_name}</small></td>
+                    <td class="file-path-cell" title="${file.file_path}"><small>${file.file_path}</small></td>
+                    <td>${file.owner}</td>
+                    <td><span class="badge bg-secondary">${file.age_days}d</span></td>
+                    <td><strong>${file.file_size_human}</strong></td>
+                    <td><small>${file.server_name}</small></td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-danger" id="dup-del-btn-${file.file_id}"
+                                disabled onclick="deleteDuplicateFile(${file.file_id}, '${file.file_path.replace(/'/g, "\\'")}')">
+                            <i class="bi bi-trash3"></i> Delete
+                        </button>
+                    </td>
+                </tr>`;
+            });
+        });
+        tbody.innerHTML = html;
+    }
+
+    /**
+     * Enable the Delete button only for the selected radio within a group.
+     * Ensures only one file can be deleted at a time per duplicate group.
+     */
+    function onDupRadioChange(groupIdx) {
+        // Disable all delete buttons in this group first
+        const radios = document.querySelectorAll(`input[name="dup-group-${groupIdx}"]`);
+        radios.forEach(r => {
+            const btn = document.getElementById(`dup-del-btn-${r.value}`);
+            if (btn) btn.disabled = !r.checked;
+        });
+    }
+
+    /**
+     * Delete a single duplicate file — requires user confirmation.
+     * Only one file per group can be deleted at a time (radio selection).
+     */
+    async function deleteDuplicateFile(fileId, filePath) {
+        const confirmed = confirm(
+            `Delete this duplicate file?\n\n${filePath}\n\nThis will remove the file permanently.`
+        );
+        if (!confirmed) return;
+
+        const resp = await apiFetch('/api/duplicates/delete', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ file_id: fileId })
+        });
+
+        if (resp && resp.success) {
+            // Fade out the deleted row
+            const row = document.getElementById(`dup-row-${fileId}`);
+            if (row) {
+                row.style.transition = 'opacity 0.3s';
+                row.style.opacity = '0';
+                setTimeout(() => row.remove(), 300);
+            }
+            showToast(`Deleted duplicate: ${filePath.split('/').pop()}`);
+            // Reload to refresh summary stats and group counts
+            setTimeout(() => loadDuplicates(), 500);
+        } else {
+            alert('Delete failed: ' + (resp ? resp.message : 'Unknown error'));
         }
     }
 

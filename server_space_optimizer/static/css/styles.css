@@ -621,15 +621,12 @@ body {
 
 /* ---- Collapse/Expand widget support ---- */
 .widget-collapsible .widget-body {
-    transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
     overflow: hidden;
 }
 
+/* Hide widget body when collapsed — uses display:none for reliable toggling */
 .widget-collapsible .widget-body.collapsed {
-    max-height: 0 !important;
-    opacity: 0;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
+    display: none !important;
 }
 
 .widget-collapse-btn {
