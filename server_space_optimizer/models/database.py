@@ -178,6 +178,52 @@ class SubAppCapacityPlan(Base):
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 
+class ArchivedFile(Base):
+    """
+    Archived (compressed) files tracked for lifecycle management.
+
+    When users archive files from the Purge & Archive Report page,
+    the file metadata is moved here with compression details and age info.
+    Permanent deletion is available from the archive widget.
+    """
+    __tablename__ = "archived_files"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    server_name = Column(String(255), nullable=False, index=True)
+    sub_app_name = Column(String(255), nullable=False, index=True)
+    original_file_path = Column(Text, nullable=False)
+    original_size_bytes = Column(Float, nullable=False, default=0)
+    compressed_size_bytes = Column(Float, nullable=False, default=0)
+    file_extension = Column(String(50), nullable=True, default="")
+    # Original last modified date of the file
+    original_last_modified = Column(DateTime, nullable=False)
+    # When the file was archived
+    archived_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    # Flag for permanent deletion
+    is_permanently_deleted = Column(Integer, nullable=False, default=0)
+
+
+class ExtensionStandard(Base):
+    """
+    Organisation standards for file extension categories.
+
+    Customizable from the Settings page — defines which extensions
+    are acceptable, which need optimization, and org-level policies.
+    """
+    __tablename__ = "extension_standards"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    extension = Column(String(50), nullable=False)
+    category = Column(String(100), nullable=False, default="General")
+    # Whether this extension is allowed/recommended/deprecated/blocked
+    status = Column(String(50), nullable=False, default="allowed")
+    description = Column(Text, nullable=False, default="")
+    recommended_action = Column(Text, nullable=False, default="")
+    max_retention_days = Column(Integer, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class AlertLog(Base):
     """
     Log of threshold alert emails sent to sub-app contacts.

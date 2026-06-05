@@ -13,11 +13,14 @@
 <!-- Prediction controls -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-sliders"></i> Forecast Filters
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-sliders"></i> Forecast Filters</span>
+                <button class="btn btn-sm btn-outline-secondary widget-collapse-btn" onclick="toggleWidget(this)">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
             </div>
-            <div class="card-body">
+            <div class="card-body widget-body">
                 <div class="row g-3 align-items-end">
                     <div class="col-md-4">
                         <label for="pred-server-select" class="form-label">Server</label>
@@ -45,11 +48,14 @@
 <!-- Current Usage Summary — shows size and cost of the currently selected scope -->
 <div class="row mb-4" id="current-usage-section" style="display: none;">
     <div class="col-12">
-        <div class="card">
-            <div class="card-header" style="background: linear-gradient(135deg, #2c3e50, #4ca1af); color: white;">
-                <i class="bi bi-clipboard-data"></i> Current Usage Summary
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #2c3e50, #4ca1af); color: white;">
+                <span><i class="bi bi-clipboard-data"></i> Current Usage Summary</span>
+                <button class="btn btn-sm btn-outline-light widget-collapse-btn" onclick="toggleWidget(this)">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
             </div>
-            <div class="card-body">
+            <div class="card-body widget-body">
                 <div class="row text-center">
                     <div class="col-md-3 mb-3">
                         <h6 class="text-muted text-uppercase small">Current Storage</h6>
@@ -76,11 +82,14 @@
 <!-- Combined Size + Cost Forecast Table — detailed predictions at a glance -->
 <div class="row mb-4" id="forecast-detail-section" style="display: none;">
     <div class="col-12">
-        <div class="card">
-            <div class="card-header" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white;">
-                <i class="bi bi-table"></i> Detailed Size &amp; Cost Forecast
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white;">
+                <span><i class="bi bi-table"></i> Detailed Size &amp; Cost Forecast</span>
+                <button class="btn btn-sm btn-outline-light widget-collapse-btn" onclick="toggleWidget(this)">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
             </div>
-            <div class="card-body">
+            <div class="card-body widget-body">
                 <div class="table-responsive">
                     <table class="table table-bordered table-hover mb-0">
                         <thead class="table-dark">
@@ -198,11 +207,14 @@
 <!-- Purge Rate & Net Space Forecast Section -->
 <div class="row mb-4" id="purge-forecast-section" style="display: none;">
     <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-recycle"></i> Purge Rate & Net Space Forecast
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-recycle"></i> Purge Rate & Net Space Forecast</span>
+                <button class="btn btn-sm btn-outline-secondary widget-collapse-btn" onclick="toggleWidget(this)">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
             </div>
-            <div class="card-body">
+            <div class="card-body widget-body">
                 <div class="row">
                     <div class="col-md-3 text-center mb-3">
                         <h6 class="text-muted text-uppercase small">Daily Purge Rate</h6>
@@ -239,9 +251,12 @@
 <!-- Historical trend chart -->
 <div class="row mb-4" id="trend-chart-container" style="display: none;">
     <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-graph-up"></i> Historical Space Usage Trend with Forecast Projection
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-graph-up"></i> Historical Space Usage Trend with Forecast Projection</span>
+                <button class="btn btn-sm btn-outline-secondary widget-collapse-btn" onclick="toggleWidget(this)">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
             </div>
             <div class="card-body">
                 <canvas id="trend-chart" height="350"></canvas>

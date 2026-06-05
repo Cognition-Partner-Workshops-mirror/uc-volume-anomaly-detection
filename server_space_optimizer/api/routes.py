@@ -20,6 +20,8 @@ from sqlalchemy.orm import Session
 from server_space_optimizer.models.database import (
     AlertLog,
     AppSettings,
+    ArchivedFile,
+    ExtensionStandard,
     FileMetadata,
     ScanResult,
     SpaceSnapshot,
@@ -899,6 +901,390 @@ def get_file_extensions(
         })
 
     return {"extensions": extensions, "total_types": len(extensions)}
+
+
+@router.get("/extensions/by-sub-app")
+def get_extensions_by_sub_app(
+    server_name: Optional[str] = Query(None),
+    sub_app_name: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Get file extensions breakdown by sub-application level.
+
+    Returns extension analytics grouped by server and sub-app,
+    enabling drill-down from server to sub-app level.
+    """
+    query = db.query(
+        FileMetadata.server_name,
+        FileMetadata.sub_app_name,
+        FileMetadata.file_extension,
+        func.count(FileMetadata.id).label("file_count"),
+        func.sum(FileMetadata.file_size_bytes).label("total_size"),
+        func.avg(FileMetadata.file_size_bytes).label("avg_size"),
+    ).filter(FileMetadata.is_deleted == 0)
+
+    if server_name:
+        query = query.filter(FileMetadata.server_name == server_name)
+    if sub_app_name:
+        query = query.filter(FileMetadata.sub_app_name == sub_app_name)
+
+    results = query.group_by(
+        FileMetadata.server_name,
+        FileMetadata.sub_app_name,
+        FileMetadata.file_extension,
+    ).order_by(func.sum(FileMetadata.file_size_bytes).desc()).all()
+
+    # Group results by sub-app for easy chart rendering
+    sub_app_data = {}
+    for row in results:
+        key = f"{row.server_name}/{row.sub_app_name}"
+        if key not in sub_app_data:
+            sub_app_data[key] = {
+                "server_name": row.server_name,
+                "sub_app_name": row.sub_app_name,
+                "extensions": [],
+                "total_size": 0,
+                "total_files": 0,
+            }
+        ext_lower = (row.file_extension or "").lower()
+        format_desc = EXTENSION_FORMATS.get(ext_lower, "Unknown Format")
+        # Check if this extension is considered unwanted based on optimization rules
+        is_unwanted = False
+        for rule in OPTIMIZATION_RULES:
+            if ext_lower in rule["extensions"] and rule["severity"] in ("high", "medium"):
+                is_unwanted = True
+                break
+        sub_app_data[key]["extensions"].append({
+            "extension": row.file_extension or "(no extension)",
+            "format": format_desc,
+            "file_count": row.file_count,
+            "total_size_bytes": row.total_size or 0,
+            "total_size_human": format_size(row.total_size or 0),
+            "avg_size_human": format_size(row.avg_size or 0),
+            "is_unwanted": is_unwanted,
+        })
+        sub_app_data[key]["total_size"] += (row.total_size or 0)
+        sub_app_data[key]["total_files"] += row.file_count
+
+    # Build unwanted files summary per sub-app for the bar chart
+    unwanted_by_sub_app = []
+    for key, data in sub_app_data.items():
+        unwanted_size = sum(e["total_size_bytes"] for e in data["extensions"] if e["is_unwanted"])
+        unwanted_count = sum(e["file_count"] for e in data["extensions"] if e["is_unwanted"])
+        unwanted_by_sub_app.append({
+            "server_name": data["server_name"],
+            "sub_app_name": data["sub_app_name"],
+            "unwanted_size_bytes": unwanted_size,
+            "unwanted_size_human": format_size(unwanted_size),
+            "unwanted_file_count": unwanted_count,
+            "total_size_bytes": data["total_size"],
+            "total_size_human": format_size(data["total_size"]),
+            "total_files": data["total_files"],
+        })
+
+    # Sort unwanted by size descending
+    unwanted_by_sub_app.sort(key=lambda x: x["unwanted_size_bytes"], reverse=True)
+
+    return {
+        "sub_apps": list(sub_app_data.values()),
+        "unwanted_by_sub_app": unwanted_by_sub_app,
+        "total_sub_apps": len(sub_app_data),
+    }
+
+
+@router.get("/server-capacity")
+def get_server_capacity(db: Session = Depends(get_db)):
+    """
+    Get server capacity utilization — % used vs total volume.
+
+    Assumes 100 GB total capacity per server (configurable via app_settings).
+    Returns usage percentage, free space, and sub-app breakdown per server.
+    """
+    # Get configured total capacity per server (default 100 GB)
+    capacity_setting = db.query(AppSettings).filter(
+        AppSettings.setting_key == "server_total_capacity_gb"
+    ).first()
+    total_capacity_gb = float(capacity_setting.setting_value) if capacity_setting else 100.0
+    total_capacity_bytes = total_capacity_gb * 1024 * 1024 * 1024
+
+    # Aggregate current usage by server
+    server_usage = db.query(
+        FileMetadata.server_name,
+        func.sum(FileMetadata.file_size_bytes).label("used_bytes"),
+        func.count(FileMetadata.id).label("file_count"),
+    ).filter(FileMetadata.is_deleted == 0).group_by(
+        FileMetadata.server_name
+    ).all()
+
+    # Sub-app breakdown per server
+    sub_app_usage = db.query(
+        FileMetadata.server_name,
+        FileMetadata.sub_app_name,
+        func.sum(FileMetadata.file_size_bytes).label("used_bytes"),
+        func.count(FileMetadata.id).label("file_count"),
+    ).filter(FileMetadata.is_deleted == 0).group_by(
+        FileMetadata.server_name,
+        FileMetadata.sub_app_name,
+    ).order_by(func.sum(FileMetadata.file_size_bytes).desc()).all()
+
+    servers = []
+    for row in server_usage:
+        used = row.used_bytes or 0
+        pct = (used / total_capacity_bytes) * 100 if total_capacity_bytes > 0 else 0
+        free = total_capacity_bytes - used
+        # Get sub-apps for this server
+        sub_apps = [
+            {
+                "sub_app_name": sa.sub_app_name,
+                "used_bytes": sa.used_bytes or 0,
+                "used_human": format_size(sa.used_bytes or 0),
+                "pct_of_server": ((sa.used_bytes or 0) / total_capacity_bytes) * 100,
+                "file_count": sa.file_count,
+            }
+            for sa in sub_app_usage if sa.server_name == row.server_name
+        ]
+        servers.append({
+            "server_name": row.server_name,
+            "total_capacity_bytes": total_capacity_bytes,
+            "total_capacity_human": format_size(total_capacity_bytes),
+            "used_bytes": used,
+            "used_human": format_size(used),
+            "free_bytes": max(0, free),
+            "free_human": format_size(max(0, free)),
+            "usage_pct": round(pct, 1),
+            "file_count": row.file_count,
+            "sub_apps": sub_apps,
+        })
+
+    # Sort by usage descending
+    servers.sort(key=lambda x: x["used_bytes"], reverse=True)
+
+    return {
+        "total_capacity_gb": total_capacity_gb,
+        "servers": servers,
+    }
+
+
+# ========================================================================
+# Archive endpoints — replaces direct delete with archive-first workflow
+# ========================================================================
+
+class ArchiveActionRequest(BaseModel):
+    """Request body for archiving files (replaces purge/delete)."""
+    file_ids: list
+
+
+@router.post("/servers/{server_name}/archive-action")
+def execute_archive_action(
+    server_name: str,
+    body: ArchiveActionRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Archive files — marks them as deleted and creates archive records.
+
+    Replaces direct deletion with an archive-first workflow.
+    Files are compressed (simulated) and tracked in archived_files table.
+    """
+    file_ids = body.file_ids
+    if not file_ids:
+        return {"success": False, "message": "No files specified for archiving"}
+
+    archived_count = 0
+    for file_id in file_ids:
+        file_meta = db.query(FileMetadata).filter(
+            FileMetadata.id == file_id,
+            FileMetadata.server_name == server_name,
+            FileMetadata.is_deleted == 0,
+        ).first()
+        if file_meta:
+            # Mark original file as deleted
+            file_meta.is_deleted = 1
+            # Create archive record with simulated compression (typically 60-80% ratio)
+            compressed_size = int(file_meta.file_size_bytes * 0.35)
+            archive = ArchivedFile(
+                server_name=server_name,
+                sub_app_name=file_meta.sub_app_name,
+                original_file_path=file_meta.file_path,
+                original_size_bytes=file_meta.file_size_bytes,
+                compressed_size_bytes=compressed_size,
+                file_extension=file_meta.file_extension,
+                original_last_modified=file_meta.last_modified,
+                archived_at=datetime.utcnow(),
+            )
+            db.add(archive)
+            archived_count += 1
+
+    db.commit()
+    return {
+        "success": True,
+        "message": f"Successfully archived {archived_count} file(s)",
+        "archived_count": archived_count,
+    }
+
+
+@router.get("/archives")
+def get_archived_files(
+    server_name: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Get all archived (compressed) files with age information.
+
+    Returns archived files that haven't been permanently deleted,
+    with metadata about original size, compressed size, and age.
+    """
+    query = db.query(ArchivedFile).filter(
+        ArchivedFile.is_permanently_deleted == 0
+    )
+    if server_name:
+        query = query.filter(ArchivedFile.server_name == server_name)
+
+    archives = query.order_by(ArchivedFile.archived_at.desc()).all()
+
+    now = datetime.utcnow()
+    result = []
+    total_original_size = 0
+    total_compressed_size = 0
+    for arch in archives:
+        age_days = (now - arch.archived_at).days
+        file_age_days = (now - arch.original_last_modified).days
+        total_original_size += arch.original_size_bytes
+        total_compressed_size += arch.compressed_size_bytes
+        result.append({
+            "id": arch.id,
+            "server_name": arch.server_name,
+            "sub_app_name": arch.sub_app_name,
+            "original_file_path": arch.original_file_path,
+            "original_size_bytes": arch.original_size_bytes,
+            "original_size_human": format_size(arch.original_size_bytes),
+            "compressed_size_bytes": arch.compressed_size_bytes,
+            "compressed_size_human": format_size(arch.compressed_size_bytes),
+            "file_extension": arch.file_extension,
+            "archived_at": arch.archived_at.isoformat(),
+            "archive_age_days": age_days,
+            "file_age_days": file_age_days,
+            "space_saved_bytes": arch.original_size_bytes - arch.compressed_size_bytes,
+            "space_saved_human": format_size(arch.original_size_bytes - arch.compressed_size_bytes),
+        })
+
+    return {
+        "archives": result,
+        "total_count": len(result),
+        "total_original_size_human": format_size(total_original_size),
+        "total_compressed_size_human": format_size(total_compressed_size),
+        "total_space_saved_human": format_size(total_original_size - total_compressed_size),
+    }
+
+
+class PermanentDeleteRequest(BaseModel):
+    """Request body for permanently deleting archived files."""
+    archive_ids: list
+
+
+@router.post("/archives/delete-permanent")
+def permanently_delete_archives(
+    body: PermanentDeleteRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Permanently delete archived files — final cleanup step.
+
+    This is the only way to permanently remove data. Requires
+    explicit user confirmation on the frontend.
+    """
+    archive_ids = body.archive_ids
+    if not archive_ids:
+        return {"success": False, "message": "No archives specified for deletion"}
+
+    deleted_count = 0
+    for arch_id in archive_ids:
+        arch = db.query(ArchivedFile).filter(
+            ArchivedFile.id == arch_id,
+            ArchivedFile.is_permanently_deleted == 0,
+        ).first()
+        if arch:
+            arch.is_permanently_deleted = 1
+            deleted_count += 1
+
+    db.commit()
+    return {
+        "success": True,
+        "message": f"Permanently deleted {deleted_count} archive(s)",
+        "deleted_count": deleted_count,
+    }
+
+
+# ========================================================================
+# Extension Standards CRUD — org-level file extension policies
+# ========================================================================
+
+class ExtensionStandardRequest(BaseModel):
+    """Request body for creating/updating extension standards."""
+    extension: str
+    category: str = "General"
+    status: str = "allowed"
+    description: str = ""
+    recommended_action: str = ""
+    max_retention_days: Optional[int] = None
+
+
+@router.get("/extension-standards")
+def list_extension_standards(db: Session = Depends(get_db)):
+    """Get all organisation extension standards/policies."""
+    standards = db.query(ExtensionStandard).order_by(
+        ExtensionStandard.category, ExtensionStandard.extension
+    ).all()
+    return {
+        "standards": [
+            {
+                "id": s.id,
+                "extension": s.extension,
+                "category": s.category,
+                "status": s.status,
+                "description": s.description,
+                "recommended_action": s.recommended_action,
+                "max_retention_days": s.max_retention_days,
+            }
+            for s in standards
+        ]
+    }
+
+
+@router.post("/extension-standards")
+def create_extension_standard(
+    body: ExtensionStandardRequest,
+    db: Session = Depends(get_db),
+):
+    """Create a new extension standard/policy."""
+    standard = ExtensionStandard(
+        extension=body.extension.lower().strip(),
+        category=body.category,
+        status=body.status,
+        description=body.description,
+        recommended_action=body.recommended_action,
+        max_retention_days=body.max_retention_days,
+    )
+    db.add(standard)
+    db.commit()
+    return {"success": True, "id": standard.id}
+
+
+@router.delete("/extension-standards/{standard_id}")
+def delete_extension_standard(
+    standard_id: int,
+    db: Session = Depends(get_db),
+):
+    """Delete an extension standard/policy."""
+    standard = db.query(ExtensionStandard).filter(
+        ExtensionStandard.id == standard_id
+    ).first()
+    if not standard:
+        return {"success": False, "message": "Standard not found"}
+    db.delete(standard)
+    db.commit()
+    return {"success": True}
 
 
 # ========================================================================

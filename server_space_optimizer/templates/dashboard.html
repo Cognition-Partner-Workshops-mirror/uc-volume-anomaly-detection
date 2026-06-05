@@ -83,19 +83,22 @@
 <!-- Multi-server selector: allows filtering from 1 to multiple servers -->
 <div class="row mb-3">
     <div class="col-12">
-        <div class="card">
+        <div class="card widget-collapsible">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span><i class="bi bi-funnel" style="color: #667eea;"></i> Server Filter — select one or more servers for analysis</span>
                 <div>
                     <button class="btn btn-sm btn-outline-primary me-2" onclick="selectAllServers()">
                         <i class="bi bi-check-all"></i> Select All
                     </button>
-                    <button class="btn btn-sm btn-outline-secondary" onclick="clearServerSelection()">
+                    <button class="btn btn-sm btn-outline-secondary me-2" onclick="clearServerSelection()">
                         <i class="bi bi-x-circle"></i> Clear
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary widget-collapse-btn" onclick="toggleWidget(this)">
+                        <i class="bi bi-chevron-up"></i>
                     </button>
                 </div>
             </div>
-            <div class="card-body py-2">
+            <div class="card-body py-2 widget-body">
                 <!-- Server checkbox group populated dynamically by JS -->
                 <div id="server-filter-checkboxes" class="d-flex flex-wrap gap-3">
                     <span class="text-muted">Loading servers...</span>
@@ -121,24 +124,48 @@
     </div>
 </div>
 
+<!-- Server Capacity Utilization — % used vs total volume per server -->
+<div class="row mb-4" id="capacity-section">
+    <div class="col-12">
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 style="background: linear-gradient(135deg, #2c3e50, #3498db); color: white;">
+                <span><i class="bi bi-speedometer"></i> Server Capacity Utilization (% of 100 GB)</span>
+                <button class="btn btn-sm btn-outline-light widget-collapse-btn" onclick="toggleWidget(this)">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
+            </div>
+            <div class="card-body widget-body" id="capacity-body">
+                <div class="text-center text-muted py-3">Loading capacity data...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Overall stats: pie chart + bar graph BEFORE individual server cards -->
 <div class="row mb-4" id="aggregate-charts-section">
     <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-pie-chart"></i> Space Distribution by Server
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-pie-chart"></i> Space Distribution by Server</span>
+                <button class="btn btn-sm btn-outline-secondary widget-collapse-btn" onclick="toggleWidget(this)">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
             </div>
-            <div class="card-body">
+            <div class="card-body widget-body">
                 <canvas id="server-pie-chart" height="300"></canvas>
             </div>
         </div>
     </div>
     <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-bar-chart"></i> Sub-App Space Breakdown
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-bar-chart"></i> Sub-App Space Breakdown</span>
+                <button class="btn btn-sm btn-outline-secondary widget-collapse-btn" onclick="toggleWidget(this)">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
             </div>
-            <div class="card-body">
+            <div class="card-body widget-body">
                 <canvas id="subapp-bar-chart" height="300"></canvas>
             </div>
         </div>
@@ -148,17 +175,22 @@
 <!-- Combined Growth / Purge / Forecast Chart — past 1 year to future 5 years -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card">
+        <div class="card widget-collapsible">
             <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #2c3e50, #4ca1af); color: white;">
                 <span><i class="bi bi-graph-up-arrow"></i> Growth, Purge &amp; Forecast — Past 1 Year to Future 5 Years</span>
-                <!-- Server dropdown for chart filtering -->
-                <select id="gpf-server-select" class="form-select form-select-sm"
-                    style="width: auto; min-width: 180px; background: rgba(255,255,255,0.15); color: white; border-color: rgba(255,255,255,0.3);"
-                    onchange="onGpfServerChange()">
-                    <option value="">All Servers</option>
-                </select>
+                <div class="d-flex align-items-center">
+                    <!-- Server dropdown for chart filtering -->
+                    <select id="gpf-server-select" class="form-select form-select-sm me-2"
+                        style="width: auto; min-width: 180px; background: rgba(255,255,255,0.15); color: white; border-color: rgba(255,255,255,0.3);"
+                        onchange="onGpfServerChange()">
+                        <option value="">All Servers</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline-light widget-collapse-btn" onclick="toggleWidget(this)">
+                        <i class="bi bi-chevron-up"></i>
+                    </button>
+                </div>
             </div>
-            <div class="card-body">
+            <div class="card-body widget-body">
                 <div style="height: 400px;">
                     <canvas id="combined-gpf-chart"></canvas>
                 </div>
@@ -194,16 +226,67 @@
     let allDashboardServers = [];
     let selectedServers = new Set();
 
-    // Load dashboard data, cost estimation, and combined chart on page load
+    // Load dashboard data, cost estimation, capacity, and combined chart on page load
     document.addEventListener('DOMContentLoaded', function() {
         refreshDashboard();
         loadDashboardCost();
+        loadServerCapacity();
         // Render the combined growth/purge/forecast chart (all servers)
         renderCombinedGrowthPurgeChart(null);
         // Auto-refresh every 2 minutes to show latest scan data
         setInterval(refreshDashboard, 120000);
         setInterval(loadDashboardCost, 120000);
     });
+
+    /**
+     * Load server capacity utilization data — shows % used per server
+     * based on 100 GB total assumption, with sub-app comparison.
+     */
+    async function loadServerCapacity() {
+        const data = await apiFetch('/api/server-capacity');
+        if (!data) return;
+        const body = document.getElementById('capacity-body');
+        if (!body) return;
+
+        if (data.servers.length === 0) {
+            body.innerHTML = '<div class="text-center text-muted py-3">No server data available</div>';
+            return;
+        }
+
+        let html = '';
+        for (const srv of data.servers) {
+            // Color-code based on usage percentage
+            let barColor = '#27ae60'; // green
+            if (srv.usage_pct > 80) barColor = '#e74c3c'; // red
+            else if (srv.usage_pct > 60) barColor = '#f39c12'; // orange
+
+            html += `<div class="mb-3 p-3 border rounded">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <strong>${srv.server_name}</strong>
+                    <span>
+                        <span class="badge" style="background:${barColor};color:white;">${srv.usage_pct}% used</span>
+                        <small class="text-muted ms-2">${srv.used_human} / ${srv.total_capacity_human}</small>
+                        <small class="text-success ms-2">Free: ${srv.free_human}</small>
+                    </span>
+                </div>
+                <div class="capacity-bar">
+                    <div class="progress-bar" style="width:${srv.usage_pct}%; background:${barColor};" role="progressbar"></div>
+                </div>`;
+
+            // Sub-app breakdown inside the server
+            if (srv.sub_apps && srv.sub_apps.length > 0) {
+                html += '<div class="mt-2"><small class="text-muted">Sub-App comparison:</small><div class="row mt-1">';
+                for (const sa of srv.sub_apps.slice(0, 6)) {
+                    html += `<div class="col-md-4 col-sm-6 mb-1">
+                        <small><strong>${sa.sub_app_name}</strong>: ${sa.used_human} (${sa.pct_of_server.toFixed(1)}%)</small>
+                    </div>`;
+                }
+                html += '</div></div>';
+            }
+            html += '</div>';
+        }
+        body.innerHTML = html;
+    }
 
     /**
      * Populate the chart server dropdown once dashboard data is loaded.

@@ -28,10 +28,13 @@ Without this visibility, storage problems go unnoticed until disks fill up, caus
 | **Sub-App Breakdown** | Space usage per team/service, not just per server |
 | **Incremental Scanning** | 60-minute refresh using only `find`/`stat` deltas — efficient on 10 TB+ servers |
 | **Growth & Forecast** | Linear regression on historical snapshots; projects 1 week → 5 years |
-| **Purge Eligibility** | Files ranked by age and size; user-initiated deletion with confirmation |
+| **Purge & Archive Workflow** | Archive-first approach: files archived (compressed) before permanent deletion. Archives widget shows compressed files with age. |
 | **Cost Estimation** | Configurable $/GB/month rate; cost cards on dashboard and forecast page |
-| **File Extension Analytics** | Unique extensions with optimization recommendations (compress, archive, delete) |
+| **File Extension Analytics** | Sub-app level extension breakdown, unwanted file chart, clickable Tips with recommendations |
+| **Organisation Standards** | Customizable file extension policies (allowed/recommended/deprecated/blocked) from Settings |
 | **Capacity Planning** | Per-team daily consumption, growth rate, purge schedule, allocation alerts |
+| **Server Capacity % Utilization** | Shows % of 100 GB consumed per server, free space, and sub-app comparison |
+| **Collapsible Widgets** | All dashboard sections have collapse/expand buttons (default: expanded) for quick navigation |
 | **Shell Agent** | Pure POSIX bash — no Python/Java required on monitored servers |
 | **User Auth** | Username/password login with SHA-256 hashing; SSO-ready |
 
@@ -73,7 +76,8 @@ Without this visibility, storage problems go unnoticed until disks fill up, caus
 │  │  │  SQLite Database (space_optimizer.db)                 │   │   │
 │  │  │  Tables: scan_results, file_metadata, space_snapshots│   │   │
 │  │  │          users, sub_app_configs, app_settings,       │   │   │
-│  │  │          sub_app_capacity_plans, alert_logs          │   │   │
+│  │  │          sub_app_capacity_plans, alert_logs,         │   │   │
+│  │  │          archived_files, extension_standards         │   │   │
 │  │  └──────────────────────────────────────────────────────┘   │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────┘
@@ -116,7 +120,7 @@ Without this visibility, storage problems go unnoticed until disks fill up, caus
 │   ├── auth/
 │   │   └── auth_manager.py          # Login, signup, session management
 │   ├── models/
-│   │   ├── database.py              # SQLAlchemy ORM (8 tables)
+│   │   ├── database.py              # SQLAlchemy ORM (10 tables)
 │   │   └── schemas.py               # Pydantic request/response models
 │   ├── scanner/
 │   │   ├── incremental_scanner.py   # Delta-based file scanning
@@ -138,7 +142,7 @@ Without this visibility, storage problems go unnoticed until disks fill up, caus
 │   └── templates/                   # Jinja2 HTML templates
 │       ├── base.html                # Shared layout with navbar
 │       ├── dashboard.html           # Main dashboard
-│       ├── purge.html               # Purge eligibility report
+│       ├── purge.html               # Purge & Archive Report
 │       ├── predictions.html         # Growth & forecast
 │       ├── extensions.html          # File extension analytics
 │       ├── settings.html            # Server/sub-app config UI
@@ -191,7 +195,7 @@ Without this visibility, storage problems go unnoticed until disks fill up, caus
 
 | Control | Description |
 |---------|-------------|
-| **User-Initiated Deletion Only** | Files are never auto-deleted. Every purge action requires explicit user confirmation via the UI. |
+| **Archive-Before-Delete** | Files are never directly deleted. Users first archive (compress), then permanently delete from the archives widget. Every action requires confirmation. |
 | **Role-Based Access** | Login/signup with SHA-256 hashing. Sessions expire after 24 hours. |
 | **Excluded System Mounts** | System paths (`/var`, `/opt`, `/home`, `/tmp`, `/etc`, `/boot`, etc.) are excluded from scanning by default. Configurable in Settings. |
 | **Scan Isolation** | Each scan cycle is atomic per sub-app. Failures in one sub-app don't affect others. |
@@ -314,8 +318,14 @@ servers:
 | DELETE | `/api/purge/delete/{id}` | Delete a specific file (user-initiated) |
 | GET | `/api/predictions/{server}/{sub_app}` | Growth forecast |
 | GET | `/api/extensions` | File extension analytics |
+| GET | `/api/extensions/by-sub-app` | Sub-app level extension breakdown with unwanted file analysis |
+| GET | `/api/server-capacity` | Server capacity % utilization (100 GB/server) with sub-app comparison |
 | GET | `/api/chart-data` | Time-series chart data (growth/purge/forecast) |
 | POST | `/api/agent/report` | Receive scan data from shell agents |
+| POST | `/api/servers/{name}/archive-action` | Archive (compress) files instead of direct delete |
+| GET | `/api/archives` | List all archived/compressed files with age and size info |
+| POST | `/api/archives/delete-permanent` | Permanently delete archived files |
+| CRUD | `/api/extension-standards` | Organisation extension policies (allowed/deprecated/blocked) |
 | CRUD | `/api/sub-app-configs` | Manage sub-app configurations |
 | CRUD | `/api/capacity-plans` | Manage capacity plans |
 | GET | `/api/settings/*` | App settings (cost rate, exclusions) |

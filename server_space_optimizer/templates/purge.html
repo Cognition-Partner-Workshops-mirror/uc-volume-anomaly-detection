@@ -1,23 +1,26 @@
 {% extends "base.html" %}
 
-{% block title %}Purge Report - {{ product_name }}{% endblock %}
+{% block title %}Purge & Archive Report - {{ product_name }}{% endblock %}
 {% block nav_purge %}active{% endblock %}
 
 {% block content %}
-<!-- Page header -->
+<!-- Page header — renamed from "Purge Report" to "Purge & Archive Report" -->
 <div class="page-header">
-    <h3><i class="bi bi-trash3" style="color: #e74c3c;"></i> Purge Eligibility Report</h3>
-    <p>Identify old files eligible for cleanup to reclaim valuable disk space</p>
+    <h3><i class="bi bi-archive" style="color: #e74c3c;"></i> Purge & Archive Report</h3>
+    <p>Identify old files for archival and manage compressed archives for permanent cleanup</p>
 </div>
 
 <!-- Purge report controls -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-funnel"></i> Purge Eligibility Filters
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-funnel"></i> Purge Eligibility Filters</span>
+                <button class="btn btn-sm btn-outline-secondary widget-collapse-btn" onclick="toggleWidget(this)">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
             </div>
-            <div class="card-body">
+            <div class="card-body widget-body">
                 <div class="row g-3 align-items-end">
                     <div class="col-md-3">
                         <label for="purge-server-select" class="form-label">Server</label>
@@ -32,7 +35,6 @@
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <!-- Threshold dropdown now includes 7, 30, 60 day options -->
                         <label for="purge-threshold" class="form-label">Age Threshold (days)</label>
                         <select class="form-select" id="purge-threshold" onchange="loadPurgeReport()">
                             <option value="7">7 days</option>
@@ -49,27 +51,15 @@
                         </button>
                     </div>
                 </div>
-                <!-- Quick threshold buttons for 7/30/60 day shortcuts -->
+                <!-- Quick threshold buttons -->
                 <div class="mt-3">
                     <span class="text-muted me-2">Quick thresholds:</span>
-                    <button class="btn btn-sm btn-outline-danger me-1" onclick="setPurgeThreshold(7)">
-                        <i class="bi bi-clock"></i> 7 Days
-                    </button>
-                    <button class="btn btn-sm btn-outline-warning me-1" onclick="setPurgeThreshold(30)">
-                        <i class="bi bi-clock"></i> 30 Days
-                    </button>
-                    <button class="btn btn-sm btn-outline-info me-1" onclick="setPurgeThreshold(60)">
-                        <i class="bi bi-clock"></i> 60 Days
-                    </button>
-                    <button class="btn btn-sm btn-outline-secondary me-1" onclick="setPurgeThreshold(90)">
-                        90 Days
-                    </button>
-                    <button class="btn btn-sm btn-outline-secondary me-1" onclick="setPurgeThreshold(180)">
-                        180 Days
-                    </button>
-                    <button class="btn btn-sm btn-outline-secondary" onclick="setPurgeThreshold(365)">
-                        365 Days
-                    </button>
+                    <button class="btn btn-sm btn-outline-danger me-1" onclick="setPurgeThreshold(7)">7 Days</button>
+                    <button class="btn btn-sm btn-outline-warning me-1" onclick="setPurgeThreshold(30)">30 Days</button>
+                    <button class="btn btn-sm btn-outline-info me-1" onclick="setPurgeThreshold(60)">60 Days</button>
+                    <button class="btn btn-sm btn-outline-secondary me-1" onclick="setPurgeThreshold(90)">90 Days</button>
+                    <button class="btn btn-sm btn-outline-secondary me-1" onclick="setPurgeThreshold(180)">180 Days</button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="setPurgeThreshold(365)">365 Days</button>
                 </div>
             </div>
         </div>
@@ -85,7 +75,7 @@
             </div>
             <div class="card-body text-center">
                 <h2 class="fw-bold" style="color: #e74c3c;" id="purge-total-candidates">0</h2>
-                <small class="text-muted">files eligible for cleanup</small>
+                <small class="text-muted">files eligible for archival</small>
             </div>
         </div>
     </div>
@@ -113,14 +103,18 @@
     </div>
 </div>
 
-<!-- Purge History Summary — purgeable amounts at 1 week / 1 month / 1 year / 5 years -->
+<!-- Purge History Summary — purgeable amounts at different time horizons -->
 <div class="row mb-4" id="purge-history-section">
     <div class="col-12">
-        <div class="card">
-            <div class="card-header" style="background: linear-gradient(135deg, #c0392b, #e74c3c); color: white;">
-                <i class="bi bi-clock-history"></i> Purge History — Eligible Data by Time Horizon
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 style="background: linear-gradient(135deg, #c0392b, #e74c3c); color: white;">
+                <span><i class="bi bi-clock-history"></i> Purge History — Eligible Data by Time Horizon</span>
+                <button class="btn btn-sm btn-outline-light widget-collapse-btn" onclick="toggleWidget(this)">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
             </div>
-            <div class="card-body">
+            <div class="card-body widget-body">
                 <div class="row" id="purge-history-cards">
                     <div class="col-12 text-center py-3 text-muted">
                         Select a server and click Analyze to view purge history
@@ -134,11 +128,14 @@
 <!-- Purge History Monthly Trend Chart -->
 <div class="row mb-4" id="purge-history-chart-section">
     <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-graph-down"></i> Purgeable Space Trend (Last 12 Months)
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-graph-down"></i> Purgeable Space Trend (Last 12 Months)</span>
+                <button class="btn btn-sm btn-outline-secondary widget-collapse-btn" onclick="toggleWidget(this)">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
             </div>
-            <div class="card-body">
+            <div class="card-body widget-body">
                 <div style="height: 300px;">
                     <canvas id="purge-history-chart"></canvas>
                 </div>
@@ -147,29 +144,32 @@
     </div>
 </div>
 
-<!-- Purge candidates table with top 50 default and load more -->
-<div class="row">
+<!-- Purge candidates table — now uses "Archive" instead of "Delete" -->
+<div class="row mb-4">
     <div class="col-12">
-        <div class="card">
+        <div class="card widget-collapsible">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span>
                     <i class="bi bi-table"></i> Purge Candidates (sorted by size, largest first)
                     <span class="badge bg-secondary ms-2" id="purge-showing-count"></span>
                 </span>
                 <div>
-                    <!-- Purge action buttons — user-initiated deletion with confirmation -->
-                    <button class="btn btn-sm btn-danger me-2" id="btn-purge-selected" style="display:none;" onclick="purgeSelectedFiles()">
-                        <i class="bi bi-trash3"></i> Purge Selected (<span id="purge-selected-count">0</span>)
+                    <!-- Archive action button — replaces "Purge Selected" -->
+                    <button class="btn btn-sm btn-warning me-2" id="btn-archive-selected" style="display:none;" onclick="archiveSelectedFiles()">
+                        <i class="bi bi-archive"></i> Archive Selected (<span id="archive-selected-count">0</span>)
                     </button>
                     <button class="btn btn-sm btn-outline-info me-2" id="btn-load-all" style="display:none;" onclick="loadAllPurgeCandidates()">
                         <i class="bi bi-list-ul"></i> Load All
                     </button>
-                    <button class="btn btn-sm btn-outline-success" onclick="exportPurgeCsv()">
+                    <button class="btn btn-sm btn-outline-success me-2" onclick="exportPurgeCsv()">
                         <i class="bi bi-download"></i> Export CSV
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary widget-collapse-btn" onclick="toggleWidget(this)">
+                        <i class="bi bi-chevron-up"></i>
                     </button>
                 </div>
             </div>
-            <div class="card-body">
+            <div class="card-body widget-body">
                 <div class="table-responsive">
                     <table class="table table-striped table-hover" id="purge-table">
                         <thead class="table-dark">
@@ -197,6 +197,83 @@
         </div>
     </div>
 </div>
+
+<!-- Archives Widget — shows compressed/archived files with permanent delete option -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 style="background: linear-gradient(135deg, #2c3e50, #34495e); color: white;">
+                <span><i class="bi bi-archive"></i> Archived Files — Compressed Storage</span>
+                <div>
+                    <button class="btn btn-sm btn-danger me-2" id="btn-delete-archives" style="display:none;" onclick="deleteSelectedArchives()">
+                        <i class="bi bi-trash3"></i> Delete Permanently (<span id="archive-delete-count">0</span>)
+                    </button>
+                    <button class="btn btn-sm btn-outline-light" onclick="loadArchives()">
+                        <i class="bi bi-arrow-repeat"></i> Refresh
+                    </button>
+                    <button class="btn btn-sm btn-outline-light widget-collapse-btn ms-2" onclick="toggleWidget(this)">
+                        <i class="bi bi-chevron-up"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body widget-body">
+                <!-- Archive summary stats -->
+                <div class="row mb-3" id="archive-summary" style="display:none;">
+                    <div class="col-md-3">
+                        <div class="p-2 bg-light rounded text-center">
+                            <small class="text-muted">Total Archives</small>
+                            <h5 class="mb-0" id="archive-total-count">0</h5>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="p-2 bg-light rounded text-center">
+                            <small class="text-muted">Original Size</small>
+                            <h5 class="mb-0" id="archive-original-size">0 B</h5>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="p-2 bg-light rounded text-center">
+                            <small class="text-muted">Compressed Size</small>
+                            <h5 class="mb-0" id="archive-compressed-size">0 B</h5>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="p-2 bg-light rounded text-center">
+                            <small class="text-muted">Space Saved</small>
+                            <h5 class="mb-0 text-success" id="archive-space-saved">0 B</h5>
+                        </div>
+                    </div>
+                </div>
+                <!-- Archives table -->
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover" id="archive-table">
+                        <thead class="table-dark">
+                            <tr>
+                                <th><input type="checkbox" id="archive-select-all" onclick="toggleSelectAllArchives()" title="Select All"></th>
+                                <th>#</th>
+                                <th>File Path</th>
+                                <th>Original Size</th>
+                                <th>Compressed</th>
+                                <th>Sub-App</th>
+                                <th>File Age</th>
+                                <th>Archived</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="archive-table-body">
+                            <tr>
+                                <td colspan="9" class="text-center text-muted py-4">
+                                    No archived files yet. Archive files from the purge candidates above.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -204,9 +281,10 @@
     // Track total candidate count for "Load All" button visibility
     let purgeFullCount = 0;
 
-    // Populate server dropdown on page load
+    // Populate server dropdown and load archives on page load
     document.addEventListener('DOMContentLoaded', function() {
         populateServerDropdowns();
+        loadArchives();
     });
 
     /** Set the threshold dropdown and re-run the purge report */
@@ -217,22 +295,18 @@
     }
 
     /**
-     * When a server is selected in purge, populate the sub-app dropdown
-     * with sub-apps available on that server and load purge history.
+     * When a server is selected, populate the sub-app dropdown
+     * and load purge history.
      */
     async function onPurgeServerChange() {
         const serverSelect = document.getElementById('purge-server-select');
         const subappSelect = document.getElementById('purge-subapp-select');
         if (!serverSelect || !subappSelect) return;
 
-        // Clear existing sub-app options
-        while (subappSelect.options.length > 1) {
-            subappSelect.remove(1);
-        }
+        while (subappSelect.options.length > 1) subappSelect.remove(1);
 
         if (!serverSelect.value) return;
 
-        // Fetch sub-apps for the selected server from the lookup API
         const data = await apiFetch('/api/config/sub-app-names?server_name=' + encodeURIComponent(serverSelect.value));
         if (data && data.sub_apps) {
             data.sub_apps.forEach(name => {
@@ -243,17 +317,11 @@
             });
         }
 
-        // Load purge history summary (1w/1m/1y/5y cards + chart)
         loadPurgeHistorySummary(serverSelect.value);
-
-        // Auto-run the purge report when server is selected
         loadPurgeReport();
     }
 
-    /**
-     * Load all purge candidates without the top-50 limit.
-     * Called when the user clicks "Load All" to see the full list.
-     */
+    /** Load all purge candidates without the top-50 limit */
     function loadAllPurgeCandidates() {
         loadPurgeReport(99999);
     }
@@ -263,25 +331,25 @@
         const selectAll = document.getElementById('purge-select-all');
         const checkboxes = document.querySelectorAll('.purge-checkbox');
         checkboxes.forEach(cb => { cb.checked = selectAll.checked; });
-        updatePurgeSelectedCount();
+        updateArchiveSelectedCount();
     }
 
-    /** Update the "Purge Selected (N)" button visibility and count */
-    function updatePurgeSelectedCount() {
+    /** Update the "Archive Selected (N)" button visibility and count */
+    function updateArchiveSelectedCount() {
         const checked = document.querySelectorAll('.purge-checkbox:checked');
-        const btn = document.getElementById('btn-purge-selected');
-        const countEl = document.getElementById('purge-selected-count');
+        const btn = document.getElementById('btn-archive-selected');
+        const countEl = document.getElementById('archive-selected-count');
         if (btn) btn.style.display = checked.length > 0 ? 'inline-block' : 'none';
         if (countEl) countEl.textContent = checked.length;
     }
 
     /**
-     * Purge a single file — shows confirmation dialog before deleting.
-     * Deletion is user-initiated only; no auto-deletion occurs.
+     * Archive a single file — shows confirmation then archives (compress + move).
+     * Replaces the old "Delete" action with archive-first workflow.
      */
-    async function purgeSingleFile(fileId, filePath) {
+    async function archiveSingleFile(fileId, filePath) {
         const confirmed = confirm(
-            `Are you sure you want to purge this file?\n\n${filePath}\n\nThis action cannot be undone.`
+            `Archive this file?\n\n${filePath}\n\nThe file will be compressed and moved to the archive.`
         );
         if (!confirmed) return;
 
@@ -289,35 +357,35 @@
         if (!serverSelect || !serverSelect.value) return;
 
         const resp = await apiFetch(
-            `/api/servers/${encodeURIComponent(serverSelect.value)}/purge-action`,
+            `/api/servers/${encodeURIComponent(serverSelect.value)}/archive-action`,
             { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ file_ids: [fileId] }) }
         );
 
         if (resp && resp.success) {
-            // Remove the purged row from the table with fade-out effect
             const row = document.getElementById(`purge-row-${fileId}`);
             if (row) {
                 row.style.transition = 'opacity 0.3s';
                 row.style.opacity = '0';
                 setTimeout(() => row.remove(), 300);
             }
-            showToast(`Purged successfully: ${filePath.split('/').pop()}`);
+            showToast(`Archived successfully: ${filePath.split('/').pop()}`);
+            loadArchives(); // Refresh archives widget
         } else {
-            alert('Purge failed: ' + (resp ? resp.message : 'Unknown error'));
+            alert('Archive failed: ' + (resp ? resp.message : 'Unknown error'));
         }
     }
 
     /**
-     * Purge all selected files — shows confirmation dialog listing count.
-     * All deletions require explicit user confirmation.
+     * Archive all selected files — shows confirmation dialog.
+     * All archival requires explicit user confirmation.
      */
-    async function purgeSelectedFiles() {
+    async function archiveSelectedFiles() {
         const checked = document.querySelectorAll('.purge-checkbox:checked');
         if (checked.length === 0) return;
 
         const fileIds = Array.from(checked).map(cb => parseInt(cb.value));
         const confirmed = confirm(
-            `Are you sure you want to purge ${fileIds.length} selected file(s)?\n\nThis action cannot be undone.`
+            `Archive ${fileIds.length} selected file(s)?\n\nFiles will be compressed and moved to the archive.`
         );
         if (!confirmed) return;
 
@@ -325,24 +393,129 @@
         if (!serverSelect || !serverSelect.value) return;
 
         const resp = await apiFetch(
-            `/api/servers/${encodeURIComponent(serverSelect.value)}/purge-action`,
+            `/api/servers/${encodeURIComponent(serverSelect.value)}/archive-action`,
             { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ file_ids: fileIds }) }
         );
 
         if (resp && resp.success) {
-            // Remove purged rows from table
             fileIds.forEach(id => {
                 const row = document.getElementById(`purge-row-${id}`);
                 if (row) row.remove();
             });
-            showToast(`Successfully purged ${resp.purged_count} file(s)`);
-            updatePurgeSelectedCount();
+            showToast(`Successfully archived ${resp.archived_count} file(s)`);
+            updateArchiveSelectedCount();
+            loadArchives(); // Refresh archives widget
         } else {
-            alert('Purge failed: ' + (resp ? resp.message : 'Unknown error'));
+            alert('Archive failed: ' + (resp ? resp.message : 'Unknown error'));
         }
     }
 
-    /** Simple toast notification for purge feedback */
+    // ====== Archives Widget Functions ======
+
+    /** Load archived files into the archives table */
+    async function loadArchives() {
+        const data = await apiFetch('/api/archives');
+        if (!data) return;
+
+        const summary = document.getElementById('archive-summary');
+        if (summary) summary.style.display = data.total_count > 0 ? 'flex' : 'none';
+
+        updateElement('archive-total-count', formatNumber(data.total_count));
+        updateElement('archive-original-size', data.total_original_size_human);
+        updateElement('archive-compressed-size', data.total_compressed_size_human);
+        updateElement('archive-space-saved', data.total_space_saved_human);
+
+        const tbody = document.getElementById('archive-table-body');
+        if (!tbody) return;
+
+        if (data.archives.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No archived files yet. Archive files from the purge candidates above.</td></tr>';
+            return;
+        }
+
+        let html = '';
+        data.archives.forEach((arch, idx) => {
+            html += `<tr id="archive-row-${arch.id}">
+                <td><input type="checkbox" class="archive-checkbox" value="${arch.id}" onchange="updateArchiveDeleteCount()"></td>
+                <td>${idx + 1}</td>
+                <td><small title="${arch.original_file_path}">${arch.original_file_path.split('/').pop()}</small></td>
+                <td>${arch.original_size_human}</td>
+                <td><span class="text-success">${arch.compressed_size_human}</span></td>
+                <td>${arch.sub_app_name}</td>
+                <td><span class="badge bg-secondary">${arch.file_age_days} days</span></td>
+                <td><small>${formatDateTime(arch.archived_at)}</small></td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteSingleArchive(${arch.id}, '${arch.original_file_path.replace(/'/g, "\\'")}')">
+                        <i class="bi bi-trash3"></i> Delete
+                    </button>
+                </td>
+            </tr>`;
+        });
+        tbody.innerHTML = html;
+    }
+
+    /** Toggle select all archive checkboxes */
+    function toggleSelectAllArchives() {
+        const selectAll = document.getElementById('archive-select-all');
+        const checkboxes = document.querySelectorAll('.archive-checkbox');
+        checkboxes.forEach(cb => { cb.checked = selectAll.checked; });
+        updateArchiveDeleteCount();
+    }
+
+    /** Update archive delete button count */
+    function updateArchiveDeleteCount() {
+        const checked = document.querySelectorAll('.archive-checkbox:checked');
+        const btn = document.getElementById('btn-delete-archives');
+        const countEl = document.getElementById('archive-delete-count');
+        if (btn) btn.style.display = checked.length > 0 ? 'inline-block' : 'none';
+        if (countEl) countEl.textContent = checked.length;
+    }
+
+    /** Permanently delete a single archive */
+    async function deleteSingleArchive(archiveId, filePath) {
+        const confirmed = confirm(
+            `PERMANENTLY delete this archived file?\n\n${filePath}\n\nThis action cannot be undone.`
+        );
+        if (!confirmed) return;
+
+        const resp = await apiFetch('/api/archives/delete-permanent', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ archive_ids: [archiveId] })
+        });
+
+        if (resp && resp.success) {
+            const row = document.getElementById(`archive-row-${archiveId}`);
+            if (row) { row.style.opacity = '0'; setTimeout(() => row.remove(), 300); }
+            showToast('Permanently deleted archive');
+            loadArchives();
+        }
+    }
+
+    /** Permanently delete selected archives */
+    async function deleteSelectedArchives() {
+        const checked = document.querySelectorAll('.archive-checkbox:checked');
+        if (checked.length === 0) return;
+
+        const ids = Array.from(checked).map(cb => parseInt(cb.value));
+        const confirmed = confirm(
+            `PERMANENTLY delete ${ids.length} archived file(s)?\n\nThis action cannot be undone.`
+        );
+        if (!confirmed) return;
+
+        const resp = await apiFetch('/api/archives/delete-permanent', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ archive_ids: ids })
+        });
+
+        if (resp && resp.success) {
+            showToast(`Permanently deleted ${resp.deleted_count} archive(s)`);
+            loadArchives();
+        }
+    }
+
+    /** Simple toast notification */
     function showToast(message) {
         const toast = document.createElement('div');
         toast.className = 'position-fixed bottom-0 end-0 p-3';

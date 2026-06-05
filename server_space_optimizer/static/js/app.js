@@ -165,6 +165,29 @@ function updateElement(id, value) {
 }
 
 // ===========================================================
+// Widget Collapse/Expand toggle — used across all pages.
+// Collapses the .widget-body inside the parent .widget-collapsible card.
+// Default state is expanded.
+// ===========================================================
+function toggleWidget(btn) {
+    const card = btn.closest('.widget-collapsible');
+    if (!card) return;
+    const body = card.querySelector('.widget-body');
+    if (!body) return;
+
+    const isCollapsed = body.classList.contains('collapsed');
+    if (isCollapsed) {
+        body.classList.remove('collapsed');
+        btn.classList.remove('collapsed');
+        btn.querySelector('i').className = 'bi bi-chevron-up';
+    } else {
+        body.classList.add('collapsed');
+        btn.classList.add('collapsed');
+        btn.querySelector('i').className = 'bi bi-chevron-down';
+    }
+}
+
+// ===========================================================
 // Render server cards with sub-app space breakdown
 // ===========================================================
 function renderServerCards(servers) {
@@ -493,9 +516,10 @@ async function loadPurgeReport(limit) {
         else if (candidate.days_since_modified > 180) staleClass = 'stale-danger';
         else staleClass = 'stale-warning';
 
+        // Action column: Archive button replaces Delete (archive-first workflow)
         html += `
             <tr id="purge-row-${candidate.file_id}">
-                <td><input type="checkbox" class="purge-checkbox" value="${candidate.file_id}" onchange="updatePurgeSelectedCount()"></td>
+                <td><input type="checkbox" class="purge-checkbox" value="${candidate.file_id}" onchange="updateArchiveSelectedCount()"></td>
                 <td>${idx + 1}</td>
                 <td class="file-path-cell" title="${candidate.file_path}">${candidate.file_path}</td>
                 <td><strong>${candidate.file_size_human}</strong></td>
@@ -503,8 +527,8 @@ async function loadPurgeReport(limit) {
                 <td>${formatDateTime(candidate.last_modified)}</td>
                 <td class="${staleClass}">${candidate.days_since_modified}d</td>
                 <td>
-                    <button class="btn btn-sm btn-outline-danger" onclick="purgeSingleFile(${candidate.file_id}, '${candidate.file_path.replace(/'/g, "\\'")}')">
-                        <i class="bi bi-trash3"></i> Delete
+                    <button class="btn btn-sm btn-outline-warning" onclick="archiveSingleFile(${candidate.file_id}, '${candidate.file_path.replace(/'/g, "\\'")}')">
+                        <i class="bi bi-archive"></i> Archive
                     </button>
                 </td>
             </tr>`;
@@ -515,7 +539,8 @@ async function loadPurgeReport(limit) {
     // Reset select-all checkbox state
     const selectAll = document.getElementById('purge-select-all');
     if (selectAll) selectAll.checked = false;
-    updatePurgeSelectedCount();
+    // Update the archive selected count display (archive-first workflow)
+    if (typeof updateArchiveSelectedCount === 'function') updateArchiveSelectedCount();
 }
 
 // ===========================================================

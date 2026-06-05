@@ -618,3 +618,72 @@ body {
     letter-spacing: 1px;
     opacity: 0.85;
 }
+
+/* ---- Collapse/Expand widget support ---- */
+.widget-collapsible .widget-body {
+    transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+    overflow: hidden;
+}
+
+.widget-collapsible .widget-body.collapsed {
+    max-height: 0 !important;
+    opacity: 0;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+.widget-collapse-btn {
+    transition: transform 0.3s ease;
+}
+
+.widget-collapse-btn.collapsed i {
+    transform: rotate(180deg);
+}
+
+/* ---- Wider scrollbar for easier dragging (20% wider than default) ---- */
+::-webkit-scrollbar {
+    width: 14px;
+    height: 14px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 7px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #aab;
+    border-radius: 7px;
+    border: 2px solid #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #889;
+}
+
+/* Firefox scrollbar (wider) */
+* {
+    scrollbar-width: auto;
+    scrollbar-color: #aab #f1f1f1;
+}
+
+/* ---- Server Capacity utilization bars ---- */
+.capacity-bar {
+    height: 24px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #ecf0f1;
+}
+
+.capacity-bar .progress-bar {
+    transition: width 0.6s ease;
+}
+
+/* ---- Archive badge styling ---- */
+.archive-badge {
+    background: linear-gradient(135deg, #2c3e50, #34495e);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+}

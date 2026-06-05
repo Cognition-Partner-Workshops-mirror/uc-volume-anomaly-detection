@@ -76,11 +76,14 @@
 <!-- Cost & Global Settings -->
 <div class="row mb-4">
     <div class="col-md-6 mb-3">
-        <div class="card">
-            <div class="card-header" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white;">
-                <i class="bi bi-currency-dollar"></i> Cost Estimation Settings
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white;">
+                <span><i class="bi bi-currency-dollar"></i> Cost Estimation Settings</span>
+                <button class="btn btn-sm btn-outline-light widget-collapse-btn" onclick="toggleWidget(this)">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
             </div>
-            <div class="card-body">
+            <div class="card-body widget-body">
                 <div class="mb-3">
                     <label for="cost-rate" class="form-label fw-semibold">Cost per GB per Month ($)</label>
                     <div class="input-group">
@@ -97,11 +100,14 @@
         </div>
     </div>
     <div class="col-md-6 mb-3">
-        <div class="card">
-            <div class="card-header" style="background: linear-gradient(135deg, #e74c3c, #c0392b); color: white;">
-                <i class="bi bi-shield-exclamation"></i> Excluded System Mounts
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #e74c3c, #c0392b); color: white;">
+                <span><i class="bi bi-shield-exclamation"></i> Excluded System Mounts</span>
+                <button class="btn btn-sm btn-outline-light widget-collapse-btn" onclick="toggleWidget(this)">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
             </div>
-            <div class="card-body">
+            <div class="card-body widget-body">
                 <div class="mb-3">
                     <label for="excluded-mounts" class="form-label fw-semibold">Excluded Mount Paths</label>
                     <textarea class="form-control" id="excluded-mounts" rows="4" placeholder="/var, /opt, /home, /tmp, /etc, /boot"></textarea>
@@ -116,16 +122,111 @@
     </div>
 </div>
 
+<!-- Organisation Standards for File Extensions — customizable policies -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 style="background: linear-gradient(135deg, #f39c12, #e67e22); color: white;">
+                <span><i class="bi bi-file-earmark-ruled"></i> Organisation Standards — File Extension Policies</span>
+                <div>
+                    <button class="btn btn-sm btn-light me-2" onclick="showAddStandardForm()">
+                        <i class="bi bi-plus-circle"></i> Add Standard
+                    </button>
+                    <button class="btn btn-sm btn-outline-light widget-collapse-btn" onclick="toggleWidget(this)">
+                        <i class="bi bi-chevron-up"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body widget-body">
+                <!-- Add standard form (hidden by default) -->
+                <div id="standard-form" class="border rounded p-3 mb-3" style="display: none; background: #fff8e1;">
+                    <h6><i class="bi bi-plus-circle"></i> Add Extension Standard</h6>
+                    <div class="row g-3">
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold">Extension</label>
+                            <input type="text" class="form-control" id="std-extension" placeholder=".log">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold">Category</label>
+                            <select class="form-select" id="std-category">
+                                <option value="Log Files">Log Files</option>
+                                <option value="Data Files">Data Files</option>
+                                <option value="Config Files">Config Files</option>
+                                <option value="Temporary">Temporary</option>
+                                <option value="Archive">Archive</option>
+                                <option value="Media">Media</option>
+                                <option value="Source Code">Source Code</option>
+                                <option value="General">General</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold">Status</label>
+                            <select class="form-select" id="std-status">
+                                <option value="allowed">Allowed</option>
+                                <option value="recommended">Recommended</option>
+                                <option value="deprecated">Deprecated</option>
+                                <option value="blocked">Blocked</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">Description</label>
+                            <input type="text" class="form-control" id="std-description" placeholder="Brief description">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold">Max Retention (days)</label>
+                            <input type="number" class="form-control" id="std-retention" placeholder="90">
+                        </div>
+                        <div class="col-md-1 d-flex align-items-end">
+                            <button class="btn btn-warning w-100" onclick="saveExtensionStandard()">
+                                <i class="bi bi-save"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <label class="form-label fw-semibold">Recommended Action</label>
+                        <input type="text" class="form-control" id="std-action" placeholder="e.g. Compress after 30 days">
+                    </div>
+                </div>
+                <!-- Standards table -->
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Extension</th>
+                                <th>Category</th>
+                                <th>Status</th>
+                                <th>Description</th>
+                                <th>Recommended Action</th>
+                                <th>Max Retention</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="standards-table-body">
+                            <tr><td colspan="7" class="text-center text-muted py-3">Loading standards...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Sub-App Configuration Table -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card">
+        <div class="card widget-collapsible">
             <div class="card-header d-flex justify-content-between align-items-center"
                  style="background: linear-gradient(135deg, #11998e, #38ef7d); color: white;">
                 <span><i class="bi bi-grid-3x3-gap"></i> Sub-Application Configurations</span>
-                <button class="btn btn-sm btn-light" onclick="showAddSubAppForm()">
-                    <i class="bi bi-plus-circle"></i> Add Sub-App
-                </button>
+                <div>
+                    <button class="btn btn-sm btn-light me-2" onclick="showAddSubAppForm()">
+                        <i class="bi bi-plus-circle"></i> Add Sub-App
+                    </button>
+                    <button class="btn btn-sm btn-outline-light widget-collapse-btn" onclick="toggleWidget(this)">
+                        <i class="bi bi-chevron-up"></i>
+                    </button>
+                </div>
             </div>
             <div class="card-body">
                 <!-- Add/Edit sub-app form (hidden by default) — uses dropdowns for servers/sub-apps -->
@@ -208,15 +309,20 @@
 <!-- Capacity Planning Section — per-sub-app consumption, growth, purge schedule, allocation -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card">
+        <div class="card widget-collapsible">
             <div class="card-header d-flex justify-content-between align-items-center"
                  style="background: linear-gradient(135deg, #e67e22, #f39c12); color: white;">
                 <span><i class="bi bi-bar-chart-steps"></i> Sub-App Capacity Planning</span>
-                <button class="btn btn-sm btn-light" onclick="showCapacityPlanForm()">
-                    <i class="bi bi-plus-circle"></i> Add Capacity Plan
-                </button>
+                <div>
+                    <button class="btn btn-sm btn-light me-2" onclick="showCapacityPlanForm()">
+                        <i class="bi bi-plus-circle"></i> Add Capacity Plan
+                    </button>
+                    <button class="btn btn-sm btn-outline-light widget-collapse-btn" onclick="toggleWidget(this)">
+                        <i class="bi bi-chevron-up"></i>
+                    </button>
+                </div>
             </div>
-            <div class="card-body">
+            <div class="card-body widget-body">
                 <p class="text-muted small mb-3">
                     Define estimated daily consumption, growth rate, purge schedule, and monthly allocation per sub-app.
                     When usage reaches the alert threshold, an email notification is sent to the configured contact.
@@ -327,15 +433,20 @@
 <!-- Allocation Status — shows current usage vs allocation with threshold warnings -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card">
+        <div class="card widget-collapsible">
             <div class="card-header d-flex justify-content-between align-items-center"
                  style="background: linear-gradient(135deg, #c0392b, #e74c3c); color: white;">
                 <span><i class="bi bi-speedometer2"></i> Allocation Usage Status</span>
-                <button class="btn btn-sm btn-light" onclick="checkAlerts()">
-                    <i class="bi bi-bell"></i> Check & Send Alerts
-                </button>
+                <div>
+                    <button class="btn btn-sm btn-light me-2" onclick="checkAlerts()">
+                        <i class="bi bi-bell"></i> Check & Send Alerts
+                    </button>
+                    <button class="btn btn-sm btn-outline-light widget-collapse-btn" onclick="toggleWidget(this)">
+                        <i class="bi bi-chevron-up"></i>
+                    </button>
+                </div>
             </div>
-            <div class="card-body">
+            <div class="card-body widget-body">
                 <div id="allocation-status-cards" class="row">
                     <div class="col-12 text-center text-muted py-3">Loading allocation status...</div>
                 </div>
@@ -1011,5 +1122,95 @@
             alert('Failed to check alerts');
         }
     }
+
+    // ====================================================================
+    // Organisation Extension Standards CRUD — customizable file policies
+    // ====================================================================
+
+    /** Show/hide the add standard form */
+    function showAddStandardForm() {
+        const form = document.getElementById('standard-form');
+        if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    }
+
+    /** Load and render extension standards table */
+    async function loadExtensionStandards() {
+        const data = await apiFetch('/api/extension-standards');
+        if (!data) return;
+        const tbody = document.getElementById('standards-table-body');
+        if (!tbody) return;
+
+        if (data.standards.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No standards defined yet. Click "Add Standard" to create one.</td></tr>';
+            return;
+        }
+
+        let html = '';
+        for (const s of data.standards) {
+            // Color-code the status badge
+            let statusColor = 'secondary';
+            if (s.status === 'allowed') statusColor = 'success';
+            else if (s.status === 'recommended') statusColor = 'primary';
+            else if (s.status === 'deprecated') statusColor = 'warning';
+            else if (s.status === 'blocked') statusColor = 'danger';
+
+            html += `<tr>
+                <td><strong>${s.extension}</strong></td>
+                <td>${s.category}</td>
+                <td><span class="badge bg-${statusColor}">${s.status}</span></td>
+                <td><small>${s.description || '-'}</small></td>
+                <td><small>${s.recommended_action || '-'}</small></td>
+                <td>${s.max_retention_days ? s.max_retention_days + ' days' : '-'}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteStandard(${s.id})">
+                        <i class="bi bi-trash3"></i>
+                    </button>
+                </td>
+            </tr>`;
+        }
+        tbody.innerHTML = html;
+    }
+
+    /** Save a new extension standard from the form */
+    async function saveExtensionStandard() {
+        const payload = {
+            extension: document.getElementById('std-extension').value,
+            category: document.getElementById('std-category').value,
+            status: document.getElementById('std-status').value,
+            description: document.getElementById('std-description').value,
+            recommended_action: document.getElementById('std-action').value,
+            max_retention_days: parseInt(document.getElementById('std-retention').value) || null,
+        };
+
+        if (!payload.extension) { alert('Extension is required'); return; }
+
+        const resp = await apiFetch('/api/extension-standards', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        });
+
+        if (resp && resp.success) {
+            document.getElementById('standard-form').style.display = 'none';
+            // Clear form inputs
+            document.getElementById('std-extension').value = '';
+            document.getElementById('std-description').value = '';
+            document.getElementById('std-action').value = '';
+            document.getElementById('std-retention').value = '';
+            loadExtensionStandards();
+        }
+    }
+
+    /** Delete an extension standard by ID */
+    async function deleteStandard(id) {
+        if (!confirm('Delete this extension standard?')) return;
+        const resp = await apiFetch('/api/extension-standards/' + id, { method: 'DELETE' });
+        if (resp && resp.success) loadExtensionStandards();
+    }
+
+    // Load extension standards on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadExtensionStandards();
+    });
 </script>
 {% endblock %}
