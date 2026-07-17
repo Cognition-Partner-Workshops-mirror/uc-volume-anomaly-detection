@@ -1,0 +1,332 @@
+1
+00:00:00,000 --> 00:00:04,687
+Welcome to NAS Capacity Pulse, the Volume Anomaly Detection and Storage Forecaster.
+
+2
+00:00:04,687 --> 00:00:09,375
+In most enterprises, storage monitoring relies heavily on tools like Grafana, which
+
+3
+00:00:09,375 --> 00:00:14,064
+provides excellent server-level dashboards using Prometheus or InfluxDB metrics. However, Grafana reports
+
+4
+00:00:14,064 --> 00:00:18,751
+disk usage only at the server or volume level. It cannot break
+
+5
+00:00:18,751 --> 00:00:23,439
+down storage consumption by individual sub-applications, teams, or services running on that
+
+6
+00:00:23,439 --> 00:00:28,127
+server. NAS Capacity Pulse solves this gap by providing sub-application level granularity,
+
+7
+00:00:28,128 --> 00:00:32,816
+letting you see exactly which team or service is consuming the most
+
+8
+00:00:32,815 --> 00:00:37,503
+space. The login screen provides secure authentication with username, password, and SSO
+
+9
+00:00:37,503 --> 00:00:42,192
+support.
+
+10
+00:00:42,192 --> 00:00:46,560
+The Dashboard provides a real-time overview of your entire storage infrastructure. Summary
+
+11
+00:00:46,560 --> 00:00:50,928
+cards display total servers, sub-applications, space used, file count, and estimated monthly
+
+12
+00:00:50,927 --> 00:00:55,295
+storage cost. The server filter at the top allows multi-select analysis. You
+
+13
+00:00:55,295 --> 00:00:59,664
+can select one or more servers to dynamically update all charts and
+
+14
+00:00:59,664 --> 00:01:04,031
+cards. Clicking Scan Now triggers an immediate refresh from the Linux agents.
+
+15
+00:01:04,032 --> 00:01:08,400
+Unlike Grafana, which would show you only that a server has used,
+
+16
+00:01:08,400 --> 00:01:12,768
+say, sixty percent of its disk, NAS Capacity Pulse tells you that
+
+17
+00:01:12,768 --> 00:01:17,135
+the billing-service used two point six gigabytes, the payment-gateway used one point
+
+18
+00:01:17,135 --> 00:01:21,503
+seven gigabytes, and application-logs consumed one point six gigabytes on that same
+
+19
+00:01:21,504 --> 00:01:25,871
+server.
+
+20
+00:01:25,871 --> 00:01:30,504
+The pie chart visualizes space distribution across servers. The Sub-App Space Breakdown
+
+21
+00:01:30,504 --> 00:01:35,136
+bar chart ranks all sub-applications by size, sorted in descending order so
+
+22
+00:01:35,135 --> 00:01:39,768
+the largest consumers appear at the top. This is something Grafana simply
+
+23
+00:01:39,768 --> 00:01:44,400
+cannot do, because Grafana relies on node-exporter metrics which only report filesystem-level
+
+24
+00:01:44,400 --> 00:01:49,032
+usage. Below, the Growth, Purge, and Forecast chart shows the past one
+
+25
+00:01:49,031 --> 00:01:53,664
+year and projects storage trends up to five years ahead. Notice the
+
+26
+00:01:53,664 --> 00:01:58,296
+server dropdown in the top-right corner, allowing you to filter by individual
+
+27
+00:01:58,295 --> 00:02:02,927
+servers or view all servers combined. The dark green line represents actual
+
+28
+00:02:02,927 --> 00:02:07,560
+data growth at approximately twenty percent per year. The light blue dashed
+
+29
+00:02:07,560 --> 00:02:12,192
+horizontal line marks the average volume across all historical data. The red
+
+30
+00:02:12,192 --> 00:02:16,824
+line shows actual purge activity, with light red extending into the future
+
+31
+00:02:16,824 --> 00:02:21,456
+for projected purge. Enterprises typically purge ten to fifteen percent annually, resulting
+
+32
+00:02:21,455 --> 00:02:26,087
+in steady net growth that this chart clearly visualizes.
+
+33
+00:02:26,087 --> 00:02:30,866
+Individual server cards display the IP address, mount path, and per sub-app
+
+34
+00:02:30,866 --> 00:02:35,645
+breakdowns with file counts and directory counts. Each server runs a lightweight
+
+35
+00:02:35,645 --> 00:02:40,424
+POSIX shell agent that uses only standard unix tools like find, du,
+
+36
+00:02:40,424 --> 00:02:45,203
+stat, and curl. No Python or Java installation is required. The agent
+
+37
+00:02:45,204 --> 00:02:49,983
+performs sixty-minute incremental scans, checking only for changes since the last scan,
+
+38
+00:02:49,983 --> 00:02:54,762
+making it efficient even on servers with ten terabytes of data. Here
+
+39
+00:02:54,762 --> 00:02:59,540
+you can see four servers including the newly added test-server with four
+
+40
+00:02:59,540 --> 00:03:04,319
+sub-applications: web-frontend, api-gateway, data-pipeline, and log-aggregator.
+
+41
+00:03:04,319 --> 00:03:09,343
+The Purge Eligibility Report helps identify old files for cleanup. You can
+
+42
+00:03:09,343 --> 00:03:14,367
+filter by server, sub-application, and age thresholds from seven days to one
+
+43
+00:03:14,367 --> 00:03:19,391
+year using quick-select buttons. After clicking Analyze, summary cards show total purge
+
+44
+00:03:19,391 --> 00:03:24,415
+candidates and reclaimable space. The Purge History section displays eligible data across
+
+45
+00:03:24,415 --> 00:03:29,439
+four time horizons: one week, one month, one year, and five years.
+
+46
+00:03:29,439 --> 00:03:34,463
+Grafana offers no built-in concept of purge eligibility or file aging. In
+
+47
+00:03:34,463 --> 00:03:39,487
+Grafana, you would need custom scripts and separate dashboards to identify which
+
+48
+00:03:39,487 --> 00:03:44,512
+files can be safely removed. NAS Capacity Pulse integrates this natively with
+
+49
+00:03:44,512 --> 00:03:49,536
+delete buttons that require explicit user confirmation before any file removal.
+
+50
+00:03:49,536 --> 00:03:54,135
+Growth Predictions and Space Forecast provides both size and cost projections. Current
+
+51
+00:03:54,135 --> 00:03:58,735
+usage summary shows total storage and monthly cost at your configured dollar
+
+52
+00:03:58,735 --> 00:04:03,335
+rate. The forecast table projects growth over one week, one month, one
+
+53
+00:04:03,336 --> 00:04:07,936
+year, and five years, with predicted monthly and period costs. The Purge
+
+54
+00:04:07,936 --> 00:04:12,536
+Rate section shows daily purge potential and net storage after purging. In
+
+55
+00:04:12,536 --> 00:04:17,136
+Grafana, you would typically use Prometheus prediction functions like predict-linear, but those
+
+56
+00:04:17,136 --> 00:04:21,736
+only forecast at the disk level and have no cost modeling. NAS
+
+57
+00:04:21,735 --> 00:04:26,336
+Capacity Pulse ties predictions directly to dollar amounts, helping teams plan storage
+
+58
+00:04:26,336 --> 00:04:30,936
+budgets and anticipate capacity upgrades.
+
+59
+00:04:30,935 --> 00:04:35,723
+File Extension Analytics is a unique feature not found in Grafana or
+
+60
+00:04:35,723 --> 00:04:40,512
+any common monitoring tool. It identifies all unique file extensions and provides
+
+61
+00:04:40,512 --> 00:04:45,300
+actionable optimization recommendations. For example: large dot-dat binary files should be moved
+
+62
+00:04:45,299 --> 00:04:50,087
+to cold storage. Old dot-log files should use log rotation. Dot-wav and
+
+63
+00:04:50,087 --> 00:04:54,875
+dot-bmp formats can be converted to compressed alternatives for significant space savings.
+
+64
+00:04:54,875 --> 00:04:59,663
+Dot-bak and dot-tmp files older than seven days are typically safe to
+
+65
+00:04:59,663 --> 00:05:04,451
+delete. Large CSV, XML, and JSON files can be compressed with gzip
+
+66
+00:05:04,451 --> 00:05:09,240
+for sixty to ninety percent space reduction. These data-driven recommendations help teams
+
+67
+00:05:09,240 --> 00:05:14,028
+reclaim space effectively. In Grafana, you would have no visibility into file
+
+68
+00:05:14,027 --> 00:05:18,815
+types whatsoever.
+
+69
+00:05:18,815 --> 00:05:23,879
+The Settings page provides centralized configuration management. Server Management lets administrators add
+
+70
+00:05:23,879 --> 00:05:28,944
+or remove servers from the monitoring pool. Sub-application configurations define mount paths,
+
+71
+00:05:28,943 --> 00:05:34,007
+file patterns, and folder structures for each team or service. Cost Estimation
+
+72
+00:05:34,007 --> 00:05:39,072
+Settings control the dollar-per-gigabyte rate. Excluded Mount Paths ensure system directories like
+
+73
+00:05:39,072 --> 00:05:44,136
+var, opt, and tmp are skipped. Capacity Planning sets daily consumption estimates,
+
+74
+00:05:44,135 --> 00:05:49,199
+growth rates, purge schedules, and monthly allocations per team. When usage reaches
+
+75
+00:05:49,199 --> 00:05:54,264
+eighty percent of allocated capacity, automated email alerts notify the responsible team
+
+76
+00:05:54,263 --> 00:05:59,327
+contacts.
+
+77
+00:05:59,327 --> 00:06:04,302
+To summarize, NAS Capacity Pulse stands apart from tools like Grafana with
+
+78
+00:06:04,302 --> 00:06:09,277
+its sub-application level granularity. While Grafana monitors at the server or filesystem
+
+79
+00:06:09,277 --> 00:06:14,252
+level, NAS Capacity Pulse drills down to individual services and teams. Additional
+
+80
+00:06:14,252 --> 00:06:19,227
+differentiators include file extension deep-dive analytics, controlled purge workflow with user confirmation,
+
+81
+00:06:19,227 --> 00:06:24,202
+cost forecasting tied to actual dollar amounts, a lightweight shell agent requiring
+
+82
+00:06:24,202 --> 00:06:29,177
+no Python or Java, and capacity planning with automated threshold alerting. Thank
+
+83
+00:06:29,177 --> 00:06:34,151
+you for watching this demonstration of NAS Capacity Pulse.
+

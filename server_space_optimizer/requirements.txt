@@ -1,0 +1,33 @@
+# Server Space Optimizer - Python Dependencies
+# All open-source libraries
+
+# Web framework
+fastapi>=0.109.0
+uvicorn>=0.27.0
+
+# Template rendering for the web UI
+jinja2>=3.1.3
+
+# Database ORM (SQLite backend, no external DB needed)
+sqlalchemy>=2.0.25
+
+# Configuration parsing
+pyyaml>=6.0.1
+
+# Data validation and serialization
+pydantic>=2.5.0
+
+# Background task scheduling for 60-min scan cycles
+apscheduler>=3.10.4
+
+# Numerical computation for growth prediction regression
+numpy>=1.26.0
+
+# Logging
+structlog>=23.2.0
+
+# Environment variable loading
+python-dotenv>=1.0.0
+
+# Testing
+pytest>=7.4.0

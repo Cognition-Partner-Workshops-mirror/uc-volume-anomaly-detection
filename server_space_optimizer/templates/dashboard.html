@@ -1,0 +1,412 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - {{ product_name }}{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+
+{% block content %}
+<!-- Page header -->
+<div class="page-header">
+    <h3><i class="bi bi-speedometer2" style="color: #667eea;"></i> Space Monitoring Dashboard</h3>
+    <p>Real-time view of NAS mount space usage across all Linux servers</p>
+</div>
+
+<!-- Summary cards row (5 cards including cost) -->
+<div class="row mb-4" id="summary-cards">
+    <div class="col-xl col-md-6 mb-3">
+        <div class="card summary-card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-1">Total Servers</h6>
+                        <h2 class="card-title mb-0" id="total-servers">0</h2>
+                    </div>
+                    <i class="bi bi-hdd-network display-4"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl col-md-6 mb-3">
+        <div class="card summary-card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-1">Total Sub-Apps</h6>
+                        <h2 class="card-title mb-0" id="total-sub-apps">0</h2>
+                    </div>
+                    <i class="bi bi-grid-3x3-gap display-4"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl col-md-6 mb-3">
+        <div class="card summary-card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-1">Total Space Used</h6>
+                        <h2 class="card-title mb-0" id="total-space">0 B</h2>
+                    </div>
+                    <i class="bi bi-pie-chart display-4"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl col-md-6 mb-3">
+        <div class="card summary-card bg-warning text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-1">Total Files</h6>
+                        <h2 class="card-title mb-0" id="total-files">0</h2>
+                    </div>
+                    <i class="bi bi-file-earmark display-4"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Cost estimation card on the dashboard -->
+    <div class="col-xl col-md-6 mb-3">
+        <div class="card summary-card" style="background: linear-gradient(135deg, #8e44ad, #3498db); color: white;">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-1" style="opacity:0.9;text-transform:uppercase;letter-spacing:1px;font-weight:600;font-size:0.8rem;">Monthly Cost</h6>
+                        <h2 class="card-title mb-0" id="dashboard-monthly-cost" style="font-size:2.2rem;font-weight:800;text-shadow:0 2px 4px rgba(0,0,0,0.15);">--</h2>
+                    </div>
+                    <i class="bi bi-currency-dollar display-4" style="opacity:0.3;font-size:3.5rem;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Multi-server selector: allows filtering from 1 to multiple servers -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-funnel" style="color: #667eea;"></i> Server Filter — select one or more servers for analysis</span>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary me-2" onclick="selectAllServers()">
+                        <i class="bi bi-check-all"></i> Select All
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary me-2" onclick="clearServerSelection()">
+                        <i class="bi bi-x-circle"></i> Clear
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary widget-collapse-btn" onclick="toggleWidget(this)">
+                        <i class="bi bi-chevron-up"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body py-2 widget-body">
+                <!-- Server checkbox group populated dynamically by JS -->
+                <div id="server-filter-checkboxes" class="d-flex flex-wrap gap-3">
+                    <span class="text-muted">Loading servers...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Last scan info -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="alert alert-light d-flex justify-content-between align-items-center mb-0">
+            <span>
+                <i class="bi bi-info-circle" style="color: #667eea;"></i>
+                Last Scan: <strong id="last-scan-time">Never</strong>
+                | Scan Interval: <strong id="scan-interval">60 min</strong>
+            </span>
+            <button class="btn btn-sm btn-primary" onclick="refreshDashboard()">
+                <i class="bi bi-arrow-repeat"></i> Refresh Data
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Server Capacity Utilization — % used vs total volume per server -->
+<div class="row mb-4" id="capacity-section">
+    <div class="col-12">
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 style="background: linear-gradient(135deg, #2c3e50, #3498db); color: white;">
+                <span><i class="bi bi-speedometer"></i> Server Capacity Utilization (% of 100 GB)</span>
+                <button class="btn btn-sm btn-outline-light widget-collapse-btn" onclick="toggleWidget(this)">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
+            </div>
+            <div class="card-body widget-body" id="capacity-body">
+                <div class="text-center text-muted py-3">Loading capacity data...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Overall stats: pie chart + bar graph BEFORE individual server cards -->
+<div class="row mb-4" id="aggregate-charts-section">
+    <div class="col-md-6">
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-pie-chart"></i> Space Distribution by Server</span>
+                <button class="btn btn-sm btn-outline-secondary widget-collapse-btn" onclick="toggleWidget(this)">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
+            </div>
+            <div class="card-body widget-body">
+                <canvas id="server-pie-chart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-bar-chart"></i> Sub-App Space Breakdown</span>
+                <button class="btn btn-sm btn-outline-secondary widget-collapse-btn" onclick="toggleWidget(this)">
+                    <i class="bi bi-chevron-up"></i>
+                </button>
+            </div>
+            <div class="card-body widget-body">
+                <canvas id="subapp-bar-chart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Combined Growth / Purge / Forecast Chart — past 1 year to future 5 years -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card widget-collapsible">
+            <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #2c3e50, #4ca1af); color: white;">
+                <span><i class="bi bi-graph-up-arrow"></i> Growth, Purge &amp; Forecast — Past 1 Year to Future 5 Years</span>
+                <div class="d-flex align-items-center">
+                    <!-- Server dropdown for chart filtering -->
+                    <select id="gpf-server-select" class="form-select form-select-sm me-2"
+                        style="width: auto; min-width: 180px; background: rgba(255,255,255,0.15); color: white; border-color: rgba(255,255,255,0.3);"
+                        onchange="onGpfServerChange()">
+                        <option value="">All Servers</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline-light widget-collapse-btn" onclick="toggleWidget(this)">
+                        <i class="bi bi-chevron-up"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body widget-body">
+                <div style="height: 400px;">
+                    <canvas id="combined-gpf-chart"></canvas>
+                </div>
+                <div class="mt-2 text-center">
+                    <small class="text-muted">
+                        <span style="color: #1a7a3a;">&#9632;</span> Growth (Actual) &nbsp;&nbsp;
+                        <span style="color: #e74c3c;">&#9632;</span> Purge (Actual) &nbsp;&nbsp;
+                        <span style="color: #f5a6a6;">&#9632;</span> Purge (Forecast) &nbsp;&nbsp;
+                        <span style="color: #b0b0b0;">&#9632; - -</span> Forecast (Projected) &nbsp;&nbsp;
+                        <span style="color: #5bc0de;">— —</span> Avg. Volume
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Server cards with sub-app breakdown (comes AFTER aggregate charts) -->
+<div class="row" id="server-cards">
+    <!-- Dynamically populated by JavaScript -->
+    <div class="col-12 text-center py-5">
+        <div class="spinner-border" style="color: #667eea;" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-2 text-muted">Loading server data...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Track all servers and currently selected server names for filtering
+    let allDashboardServers = [];
+    let selectedServers = new Set();
+
+    // Load dashboard data, cost estimation, capacity, and combined chart on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        refreshDashboard();
+        loadDashboardCost();
+        loadServerCapacity();
+        // Render the combined growth/purge/forecast chart (all servers)
+        renderCombinedGrowthPurgeChart(null);
+        // Auto-refresh every 2 minutes to show latest scan data
+        setInterval(refreshDashboard, 120000);
+        setInterval(loadDashboardCost, 120000);
+    });
+
+    /**
+     * Load server capacity utilization data — shows % used per server
+     * based on 100 GB total assumption, with sub-app comparison.
+     */
+    async function loadServerCapacity() {
+        const data = await apiFetch('/api/server-capacity');
+        if (!data) return;
+        const body = document.getElementById('capacity-body');
+        if (!body) return;
+
+        if (data.servers.length === 0) {
+            body.innerHTML = '<div class="text-center text-muted py-3">No server data available</div>';
+            return;
+        }
+
+        let html = '';
+        for (const srv of data.servers) {
+            // Color-code based on usage percentage
+            let barColor = '#27ae60'; // green
+            if (srv.usage_pct > 80) barColor = '#e74c3c'; // red
+            else if (srv.usage_pct > 60) barColor = '#f39c12'; // orange
+
+            html += `<div class="mb-3 p-3 border rounded">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <strong>${srv.server_name}</strong>
+                    <span>
+                        <span class="badge" style="background:${barColor};color:white;">${srv.usage_pct}% used</span>
+                        <small class="text-muted ms-2">${srv.used_human} / ${srv.total_capacity_human}</small>
+                        <small class="text-success ms-2">Free: ${srv.free_human}</small>
+                    </span>
+                </div>
+                <div class="capacity-bar">
+                    <div class="progress-bar" style="width:${srv.usage_pct}%; background:${barColor};" role="progressbar"></div>
+                </div>`;
+
+            // Sub-app breakdown inside the server
+            if (srv.sub_apps && srv.sub_apps.length > 0) {
+                html += '<div class="mt-2"><small class="text-muted">Sub-App comparison:</small><div class="row mt-1">';
+                for (const sa of srv.sub_apps.slice(0, 6)) {
+                    html += `<div class="col-md-4 col-sm-6 mb-1">
+                        <small><strong>${sa.sub_app_name}</strong>: ${sa.used_human} (${sa.pct_of_server.toFixed(1)}%)</small>
+                    </div>`;
+                }
+                html += '</div></div>';
+            }
+            html += '</div>';
+        }
+        body.innerHTML = html;
+    }
+
+    /**
+     * Populate the chart server dropdown once dashboard data is loaded.
+     * Called from buildServerFilterCheckboxes after servers are known.
+     */
+    function populateGpfServerDropdown(servers) {
+        const sel = document.getElementById('gpf-server-select');
+        if (!sel) return;
+        // Keep "All Servers" option, then add each server
+        sel.innerHTML = '<option value="">All Servers</option>';
+        servers.forEach(s => {
+            sel.innerHTML += `<option value="${s.server_name}">${s.server_name}</option>`;
+        });
+    }
+
+    /** Handle chart server dropdown change — re-render the chart */
+    function onGpfServerChange() {
+        const sel = document.getElementById('gpf-server-select');
+        const serverName = sel ? sel.value : null;
+        renderCombinedGrowthPurgeChart(serverName || null);
+    }
+
+    // Fetch and display cost estimation on the dashboard
+    async function loadDashboardCost() {
+        const data = await apiFetch('/api/cost-estimation');
+        if (!data) return;
+        updateElement('dashboard-monthly-cost', data.current_monthly_cost_formatted);
+    }
+
+    /**
+     * Build server filter checkboxes from the dashboard data.
+     * By default all servers are selected so the user sees everything.
+     */
+    function buildServerFilterCheckboxes(servers) {
+        const container = document.getElementById('server-filter-checkboxes');
+        if (!container) return;
+
+        allDashboardServers = servers;
+
+        // Populate the chart server dropdown with available servers
+        populateGpfServerDropdown(servers);
+
+        // On first load, select all servers
+        if (selectedServers.size === 0) {
+            servers.forEach(s => selectedServers.add(s.server_name));
+        }
+
+        let html = '';
+        servers.forEach(server => {
+            const checked = selectedServers.has(server.server_name) ? 'checked' : '';
+            html += `
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input server-filter-cb" type="checkbox"
+                        id="filter-${server.server_name}" value="${server.server_name}"
+                        ${checked} onchange="onServerFilterChange()">
+                    <label class="form-check-label fw-semibold" for="filter-${server.server_name}">
+                        <i class="bi bi-hdd-network"></i> ${server.server_name}
+                        <span class="badge bg-secondary ms-1">${server.total_size_human}</span>
+                    </label>
+                </div>`;
+        });
+        container.innerHTML = html;
+    }
+
+    /** Handle checkbox change: filter dashboard to selected servers */
+    function onServerFilterChange() {
+        selectedServers.clear();
+        document.querySelectorAll('.server-filter-cb:checked').forEach(cb => {
+            selectedServers.add(cb.value);
+        });
+        // Re-render with filtered servers
+        applyServerFilter();
+    }
+
+    /** Select all servers in the filter */
+    function selectAllServers() {
+        document.querySelectorAll('.server-filter-cb').forEach(cb => {
+            cb.checked = true;
+            selectedServers.add(cb.value);
+        });
+        applyServerFilter();
+    }
+
+    /** Clear all server selections */
+    function clearServerSelection() {
+        document.querySelectorAll('.server-filter-cb').forEach(cb => {
+            cb.checked = false;
+        });
+        selectedServers.clear();
+        applyServerFilter();
+    }
+
+    /**
+     * Apply current server filter to re-render cards and charts.
+     * Filters the cached dashboard data to only show selected servers.
+     */
+    function applyServerFilter() {
+        if (!cachedDashboardData) return;
+
+        const filtered = cachedDashboardData.servers.filter(
+            s => selectedServers.has(s.server_name)
+        );
+
+        // Recalculate summary stats for filtered servers
+        let totalSpace = 0, totalFiles = 0, totalSubApps = 0;
+        filtered.forEach(s => {
+            totalSpace += s.total_size_bytes;
+            totalFiles += s.total_file_count;
+            totalSubApps += s.sub_apps.length;
+        });
+
+        updateElement('total-servers', formatNumber(filtered.length));
+        updateElement('total-sub-apps', formatNumber(totalSubApps));
+        updateElement('total-space', formatSizeFromBytes(totalSpace));
+        updateElement('total-files', formatNumber(totalFiles));
+
+        // Re-render charts and cards with filtered data
+        renderServerPieChart(filtered);
+        renderSubAppBarChart(filtered);
+        renderServerCards(filtered);
+    }
+</script>
+{% endblock %}
